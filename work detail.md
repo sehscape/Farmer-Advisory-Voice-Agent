@@ -274,17 +274,74 @@ python scripts/build_scheme_index.py
 
 ---
 
-## PENDING PHASES
+### Phase 8 — Agent Orchestrator (Tool Orchestration)
+**Status:** Complete
+
+**What was built:**
+- `app/agents/orchestrator.py` — sequential tool orchestrator
+- `app/agents/answering.py` — updated weather/scheme formatters (removed Phase placeholder text)
+- `app/ui/gradio_app.py` — wired orchestrator in place of manual Steps 4–7
+- `scripts/test_agent_phase8.py` — smoke test (5 test cases, all pass)
+
+**How it works:**
+The orchestrator takes `AgentState` after intent extraction and decides which tools to call based on the intent flags set by the LLM:
+
+```
+AgentState (with intent flags)
+    ├─ needs_crop_info=True  → Crop knowledge tool
+    ├─ needs_weather=True    → Weather tool (Open-Meteo)
+    ├─ needs_scheme=True     → Scheme RAG (FAISS)
+    └─ always               → LLM answer generation
+```
+
+**Design decision:** Sequential orchestration (not ReAct loop) because:
+- Intent extraction already determines which tools are needed
+- Sequential is deterministic, fast, and avoids hallucination from looping
+- Multi-intent queries (e.g. "crop + weather + scheme") are all handled in one pass
+
+**Test cases verified:**
+1. Crop advice (wheat at 40 days) — crop tool fires
+2. Weather query with location (Pune) — crop + weather tools fire
+3. Government scheme query — scheme RAG fires
+4. Multi-intent (cotton + Nagpur + schemes) — all 3 tools fire
+5. Weather without location — graceful skip with informative message
 
 ---
 
-### Phase 8 — LangChain Agent (Tool Orchestration)
-**What it will do:**
-- Replace the manual pipeline with a proper LangChain agent
-- Agent decides dynamically which tools to call based on the query
-- Tools registered: crop knowledge, weather, scheme RAG
-- Agent reasons over tool outputs and generates the final answer
-- Handles multi-intent queries (e.g. "weather + crop advice" together)
+### UI Redesign
+**Status:** Complete
+
+**What was changed:**
+- `app/ui/gradio_app.py` — full redesign for farmer-friendliness
+- `app/main.py` — CSS moved to `launch()` (Gradio 6 compatibility); `share=True` enabled
+
+**Key improvements over old UI:**
+
+| Before | After |
+|---|---|
+| 7 stacked output boxes | 3 clean tabs (Answer / Transcript / Details) |
+| No visual hierarchy | Answer box is the hero — large, green-tinted |
+| No tool feedback | Colour-coded pills: 🌱 Crop · 🌤️ Weather · 📋 Scheme |
+| No examples | Collapsible accordion with 4 examples each in Hindi, Marathi, Punjabi |
+| Plain Gradio default | Agriculture-green theme with custom CSS |
+| Language buried in output | Language badge prominently in input column |
+| Dev trace always visible | Trace hidden in Details tab (dev mode only) |
+
+**Tab structure:**
+- **💬 Answer** — main answer box + tool badges + voice output placeholder
+- **📝 Transcript** — what the farmer said + English translation
+- **🔍 Details** — intent extraction result + pipeline trace (dev mode)
+
+**Example queries added (in UI accordion):**
+- 4 Hindi examples (wheat fertilizer, rain/irrigation, PM-KISAN, tomato yellowing)
+- 4 Marathi examples (cotton fertilizer, Nashik weather, scheme documents, onion yellowing)
+- 4 Punjabi examples (wheat fertilizer, Ludhiana rain, KCC application, rice pests)
+
+**Public sharing:** `share=True` — Gradio prints a public URL on startup (valid for 72 hours).
+
+---
+
+## PENDING PHASES
 
 ---
 
