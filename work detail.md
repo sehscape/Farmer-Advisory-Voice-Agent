@@ -654,6 +654,48 @@ both. TTS speaks English until IndicTrans2 translation is enabled (GPU-friendly)
 
 ---
 
+### Deployment — Colab (full) + Render Lite (free 24/7)
+**Status:** Complete (ready to deploy; the final click-through is manual)
+
+**Why two targets:** mid-2026 Hugging Face Spaces started requiring a **paid plan**
+for Gradio apps, and Render's free tier is only **512 MB RAM** — too small for
+Whisper + the embedding model. So:
+
+- **Google Colab** (`notebooks/run_full_app_colab.ipynb`) — runs the **full** app
+  (mic, real LLM, semantic search, voice) with a `gradio.live` link. Live only
+  while the tab is open. For demos / viva.
+
+- **Render "Lite"** (`render.yaml`, free tier, 24/7) — a new **`LITE_MODE`** that
+  strips every heavy dependency so the app fits in ~350 MB:
+  - `LITE_MODE=true` (in `app/config.py`) force-sets: keyword scheme search,
+    rule-based answers, stub translation, gTTS, no dev banner.
+  - **`app/rag/keyword_retriever.py`** — a pure-Python BM25 ranker over the same
+    scheme `.txt` files (no torch / transformers / faiss). Two tweaks for this
+    small structured corpus: a **name/header boost** (so "apply for PM-KISAN"
+    ranks the PM-KISAN file above files that merely say "kisan" often) and a
+    **≥2-matching-terms guard** (a single incidental rare-word match → "insufficient
+    information", never fabrication).
+  - **`requirements-lite.txt`** — 5 packages only (gradio, requests, numpy,
+    python-dotenv, gTTS). No torch.
+  - `app/utils/device.py` no longer imports torch unless it's installed;
+    `_get_llm`/`_get_tts` skip device probing for stub/gtts. Verified: with
+    torch/transformers/faiss *blocked*, the full typed pipeline still runs.
+  - `app/main.py` reads Render's `PORT` and skips the share tunnel on any host
+    (`SPACE_ID` / `RENDER` / `PORT` set).
+  - UI hides the microphone in lite mode with a "voice available in full version"
+    note; typed input drives everything.
+
+- **`DEPLOY.md`** — click-by-click for both paths.
+
+**New test:** `scripts/test_lite_mode.py` — forces `LITE_MODE`, checks the keyword
+retriever picks the right scheme (4/4), refuses off-topic (3/3), runs the full
+typed pipeline, and asserts **no heavy ML library is imported**. All pass.
+
+**Regression after lite work:** pytest 13/13, Phase 9 14/14, Phase 10 11/11,
+evaluate HEALTHY — all still green in normal (FAISS) mode.
+
+---
+
 ## Current Dev Mode Settings (`.env`)
 
 | Setting | Current Value | What it means |
@@ -666,6 +708,8 @@ both. TTS speaks English until IndicTrans2 translation is enabled (GPU-friendly)
 | `USE_STUB_RAG` | `false` | Use real FAISS scheme index |
 | `TTS_ENGINE` | `gtts` | Real Hi/Mr/Pa audio on CPU; `parler` for prod GPU |
 | `RAG_MIN_SCORE` | `0.30` | Below this → "insufficient information" (no fabrication) |
+| `RAG_BACKEND` | `faiss` | `bm25` = keyword search, no torch (LITE_MODE forces it) |
+| `LITE_MODE` | `false` | `true` = tiny footprint for the free Render deploy |
 | `DEV_MODE` | `true` | Show pipeline trace panel in UI |
 
 ## Project Status — ALL 15 PHASES COMPLETE ✅
