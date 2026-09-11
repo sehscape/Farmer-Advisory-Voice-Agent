@@ -35,10 +35,12 @@ farmer uses (the screen) is `ui/gradio_app.py`, and every word on it comes from
 
 ### The journey of one question (start to finish)
 ```
-Farmer picks a language  →  speaks  →  Ears write it down (in that language)
-   →  Router + LangChain agent pick the right workers
-   →  they fetch crop + weather + scheme facts  →  Brain writes the advice
-   →  speak it out loud 🔊
+Farmer picks a language  →  speaks, taps stop  →  Ears write it down (in that language)
+   →  Understanding: what is asked? is anything missing?
+        (missing crop age / village / crop → ask back out loud, then continue)
+   →  LangChain agent picks the right workers
+   →  they fetch crop + weather + scheme facts
+   →  Brain writes the advice IN THE FARMER'S LANGUAGE  →  speak it out loud 🔊
 ```
 
 ### The golden rule of this project 🏅
@@ -55,7 +57,7 @@ reliable info, the app says "I don't have enough information" instead of guessin
 | Ears, Router, LangChain agent, Crop, Weather, Scheme search | ✅ Yes | All work fully |
 | Voice output | ✅ Yes (gTTS) | Real voices, needs internet |
 | The AI brain | ✅ Small version | A small model runs on CPU (~1 min/answer). The big 8B model needs a GPU |
-| Answer in the regional language | ⚠️ Off on laptop | The answer text + spoken reply are English. The translator model is heavy (~4 GB); turn on with a GPU |
+| Answer in the regional language | ✅ With a free Groq key | Groq's cloud does the heavy listening + language work (laptop **and** Render). Without the key: English answers (the local translator is ~4 GB / GPU) |
 
 ### How to run it on your computer
 ```bash
@@ -64,9 +66,10 @@ venv\Scripts\activate            # turn on the virtual environment
 python scripts/build_scheme_index.py   # one time — prepares the scheme search
 python app.py                    # opens the app at http://localhost:7860
 ```
-Two switches live in the `.env` file:
+Three switches live in the `.env` file:
+- `GROQ_API_KEY=gsk_…` → **voice + answers in Hindi / Punjabi / Marathi** (free key, DEPLOY.md section C). Empty → off.
 - `USE_STUB_LLM=true` → **fast** answers (simple, instant). `false` → **real AI** brain (slower on CPU).
-- `USE_STUB_TRANSLATION=true` → voice speaks **English**. `false` → real regional voice (needs the heavy model / GPU).
+- `USE_STUB_TRANSLATION=true` → without Groq, the voice speaks **English**. `false` → local translator (heavy model / GPU).
 
 ### Where things live (folder map)
 ```
@@ -81,8 +84,9 @@ scripts/      → test files that prove each part works
 
 ### Is it finished?
 Yes — **all 15 phases are complete**, plus the LangChain agent, the 4-language
-screen, and a live deployment on Render. Everything is tested. The detailed,
-technical phase-by-phase log is below.
+screen, voice + answers in all 4 languages on the live Render site (with a free
+Groq key), and spoken follow-up questions when something is missing. Everything
+is tested. The detailed, technical phase-by-phase log is below.
 
 ---
 
@@ -806,6 +810,86 @@ no console errors.
 
 ---
 
+### Voice + Answers in Every Language on the Free Host (Groq) — for farmers who can't read
+
+**The problem (in simple words):** on Render, the mic was hidden and only English
+worked. Why? Render's free computer has only 512 MB of memory. The "ears"
+(Whisper) need about 1 GB and the translator about 4 GB — they simply don't fit.
+
+**The fix (in simple words):** we "rent" the ears and the translator for free
+from **Groq**, a cloud service. Our small app sends the farmer's voice to Groq,
+Groq writes down the words (Whisper-large-v3 — the biggest, most accurate
+Whisper), and an open-weight AI model (OpenAI's **gpt-oss-120b**, Apache-2.0)
+works out what the farmer means and later writes the answer **in the farmer's
+own language**, using only the facts our tools found. Nothing new to install;
+the app still uses under 200 MB. The only thing needed is a free key
+(`GROQ_API_KEY`, see DEPLOY.md section C). *Note: Groq's free plan no longer
+includes Llama 3.x (Enterprise only, Sept 2026), so gpt-oss is the default; the
+app tries `gpt-oss-120b → gpt-oss-20b → llama-3.3-70b` and skips any it can't use.*
+
+**The farmer's journey now:**
+
+| Step | What the farmer does | What the app does |
+|---|---|---|
+| 1 | Opens the link | Opens in their language (remembered on the phone) |
+| 2 | Taps 🎙️, speaks, taps stop | Sends the question by itself — no other button |
+| 3 | — | Groq Whisper writes the words; "You asked: …" is shown |
+| 4 | — | The LLM understands it: crop, age, village, weather/scheme/crop care |
+| 5a | If something is missing | Asks back **out loud, in their language**: "How many days old is your wheat?" / "Which village are you in?" |
+| 5b | Replies with just "40 days" / "Nashik" | Remembers the first question and completes it |
+| 6 | — | LangChain agent runs the tools (crop / weather / scheme) |
+| 7 | Listens | The LLM writes the answer in their language from the facts; gTTS speaks it |
+
+**Every "incorrect or incomplete" case is told to the farmer, spoken, in their language:**
+
+| Farmer says | App says (in their language) |
+|---|---|
+| Crop question, no crop named | "Which crop is this about? I know wheat, rice, cotton, onion, tomato, maize." |
+| Fertilizer/water question, no age | "How many days old is your wheat crop? e.g. 40 days" |
+| Impossible age (wheat, 300 days) | "Wheat is usually ready in about 120 days, but you said 300. Please check." |
+| A crop we don't cover (sugarcane) | "I don't have advice for sugarcane yet. I can help with…" |
+| Weather, no place | "Which village or town are you in? Or tap 📍 Use my location." |
+| A place the map can't find | "I could not find 'X'. Please say a nearby big town or your district." |
+| A scheme we don't have | "I can tell you about PM-KISAN, crop insurance, KCC, Soil Health Card." |
+| Not about farming / unclear / hello | What the assistant can help with, plus an example question |
+| Silence or noise | "I could not hear you. Speak close to the phone, then tap stop." |
+| Groq busy / down | "Please wait a minute and ask again" / "try again in a few minutes" |
+
+If part of a question can be answered (e.g. weather yes, but crop age missing),
+it answers that part **and** adds the question for the missing detail at the end.
+
+**Other help for farmers who can't read:** 📍 button fills the location from GPS
+(the weather tool accepts coordinates); the village and language are remembered;
+examples are in their language (tap = ask); a "What I can help with" panel;
+every message is spoken; bigger mic and answer text; Indian towns are preferred
+when two places share a name ("Shirur, Pune" also works).
+
+**New files:**
+- `app/models/groq_client.py` — talks to Groq with plain `requests`: model
+  fallback, rate-limit handling, the key is never logged.
+- `app/models/stt.py` → `GroqWhisperSTT` — forced language, a farm-word hint per
+  language, and silence / noise / "echo" detection.
+- `app/agents/understanding.py` — what was asked + what's missing (LLM JSON,
+  with the keyword rules as a backup), and follow-up merging.
+- `app/agents/clarify.py` — decides what to answer and what to ask back.
+- `app/agents/reply_writer.py` — the answer in the farmer's language, facts only;
+  retries if the model writes the wrong script (e.g. Punjabi in Devanagari).
+- `scripts/test_voice_languages.py` — **66/66**: fakes the Render host + Groq and
+  walks every journey above in all 4 languages, plus failure paths.
+- `scripts/test_groq_live.py` — the same with the real key (run after adding it).
+
+**Also fixed:** the Hindi/Punjabi/Marathi letter-spacing rule never applied
+(Gradio's own CSS prefix out-ranked it) — Indic text on buttons and headings is
+no longer stretched apart.
+
+**Browser-verified (local, Render settings):** mic shown; Hindi page; tapping a
+Hindi example answered from the crop tool (tillering stage); 📍 filled and
+remembered the location and the weather tool used it; reload restored Hindi and
+the place; phone-size layout checked; with a broken key the app fell back to the
+rules and told the farmer in Hindi — and the key never appeared in the logs.
+
+---
+
 ### Deployment status
 - **Render (Lite) — live:** https://farmer-advisory-voice-agent.onrender.com
   (verified HTTP 200). Redeploy after a push with Render's **Manual Deploy →
@@ -835,14 +919,17 @@ no console errors.
 | `LITE_MODE` | `false` | `true` = tiny footprint for the free Render deploy |
 | `AGENT_BACKEND` | `langchain` (default) | `sequential` = deterministic orchestrator |
 | `DEV_MODE` | `true` | Show pipeline trace panel in UI |
+| `GROQ_API_KEY` | *(your free key)* | Voice via Groq Whisper + answers in all 4 languages; empty = off |
+| `GROQ_LLM_MODELS` | `openai/gpt-oss-120b,…` | LLMs tried in order (skipped if unavailable/over limit) |
+| `STT_BACKEND` | `auto` | `auto` = Groq if a key is set, else local Whisper |
 
 ## Project Status — ALL 15 PHASES COMPLETE ✅ + LIVE
 
 All 15 phases are built, tested and evaluated, plus the LangChain agent (default
-engine), the 4-language interface with voice questions in every language, and a
-live free deployment on Render. On CPU/free hosting the answer and spoken reply
-are English; enabling real IndicTrans2 (`USE_STUB_TRANSLATION=false`) and
-Parler (`TTS_ENGINE=parler`) on a GPU host delivers them in the regional language.
+engine), the 4-language interface, and a live free deployment on Render. With a
+free Groq key the live site takes **voice questions and answers in Hindi,
+Punjabi, Marathi and English**, and asks the farmer back whenever a question is
+incomplete or unclear. Without the key it falls back to typed English.
 
 ## GitHub Repository
 
