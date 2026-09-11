@@ -808,7 +808,9 @@ no console errors.
 
 ### Deployment status
 - **Render (Lite) — live:** https://farmer-advisory-voice-agent.onrender.com
-  (verified HTTP 200, serving the latest build; redeploys on every push to `main`).
+  (verified HTTP 200). Redeploy after a push with Render's **Manual Deploy →
+  Deploy latest commit** — the service isn't connected via Render's GitHub app,
+  so pushes don't deploy on their own.
 - **Colab notebook — ready:** `notebooks/run_full_app_colab.ipynb` runs the full
   app (4-language mic, LangChain agent on Qwen 1.5B, semantic search, voice).
   Dry-run verified locally; a real Colab run needs your Google account.
