@@ -5,9 +5,12 @@
 ## 📖 PROJECT EXPLAINED SIMPLY (read this first)
 
 ### What is this project, in one line?
-A phone/computer app where a **farmer speaks a question** (in Hindi, Marathi, or
-Punjabi) and the app **speaks back real farming advice** — about their crop, the
-weather, and government schemes.
+A phone/computer app where a **farmer picks their language** (English, Hindi,
+Punjabi or Marathi), **asks a question** by voice or typing, and the app **speaks
+back real farming advice** — about their crop, the weather, and government schemes.
+
+**Live link:** https://farmer-advisory-voice-agent.onrender.com (open it a couple of
+minutes before a demo — the free server takes ~1 minute to wake up).
 
 ### Think of it like a small shop with 7 workers 🧑‍🌾
 Each "worker" is one piece of code. A question passes down the line:
@@ -16,22 +19,26 @@ Each "worker" is one piece of code. A question passes down the line:
 |---|---|---|
 | 1 | 👂 **Ears** — `models/stt.py` (Whisper) | Listens to the voice and writes down the words |
 | 2 | 🌐 **Translator (in)** — `models/translation.py` | Turns Hindi/Marathi/Punjabi words into English (the app thinks in English) |
-| 3 | 🧭 **Router** — `agents/intent.py` | Reads the question and decides *what* is being asked (crop? weather? scheme?) |
+| 3 | 🧭 **Router** — `agents/intent.py` + `models/llm.py` | Reads the question and decides *what* is being asked (crop? weather? scheme?). Knows farm words in English, Hindi, Marathi and Punjabi |
 | 4 | 🗂️ **Scheme finder** — `tools/scheme_tool.py` + `rag/` | Searches real government-scheme documents for the answer |
 | 5 | 🌦️ **Weather checker** — `tools/weather_tool.py` | Gets the live weather for the farmer's town |
 | 6 | 🌱 **Crop expert** — `tools/crop_tool.py` | Looks up stage-by-stage advice for the crop |
 | 7 | 🧠 **Brain** — `models/llm.py` (the AI) | Reads everything the workers found and writes one clear answer |
 | → | 🌐 **Translator (out)** + 👄 **Mouth** — `translation.py` + `models/tts.py` | Turns the English answer back into the farmer's language and **speaks it aloud** |
 
-The **manager** that passes the question from worker to worker is
-`agents/orchestrator.py`. The **shop counter** the farmer uses (the screen) is
-`ui/gradio_app.py`.
+The **manager** that decides which workers to call is a **LangChain agent**
+(`agents/langchain_agent.py`) — it thinks step by step: "I need the weather… now
+the scheme documents… now I can answer." If it ever gets stuck, a simpler
+backup manager (`agents/orchestrator.py`) takes over. The **shop counter** the
+farmer uses (the screen) is `ui/gradio_app.py`, and every word on it comes from
+`ui/i18n.py` in all four languages.
 
 ### The journey of one question (start to finish)
 ```
-Farmer speaks  →  Ears write it down  →  Translate to English
-   →  Router picks the right workers  →  they fetch crop + weather + scheme facts
-   →  Brain writes the advice  →  translate back  →  speak it out loud 🔊
+Farmer picks a language  →  speaks  →  Ears write it down (in that language)
+   →  Router + LangChain agent pick the right workers
+   →  they fetch crop + weather + scheme facts  →  Brain writes the advice
+   →  speak it out loud 🔊
 ```
 
 ### The golden rule of this project 🏅
@@ -43,10 +50,12 @@ reliable info, the app says "I don't have enough information" instead of guessin
 ### What runs on your laptop (no GPU) vs. what needs a GPU
 | Part | On your laptop? | Note |
 |---|---|---|
-| Ears, Router, Crop, Weather, Scheme search, Screen | ✅ Yes | All work fully |
-| Voice output | ✅ Yes (gTTS) | Real Hindi/Marathi/Punjabi voices, needs internet |
+| Screen in English / Hindi / Punjabi / Marathi | ✅ Yes | Pick at the top right; works on Render too |
+| Voice questions in all 4 languages | ✅ Yes | Hindi is heard well; Marathi/Punjabi transcripts are rough, but the router still finds the crop, place and topic |
+| Ears, Router, LangChain agent, Crop, Weather, Scheme search | ✅ Yes | All work fully |
+| Voice output | ✅ Yes (gTTS) | Real voices, needs internet |
 | The AI brain | ✅ Small version | A small model runs on CPU (~1 min/answer). The big 8B model needs a GPU |
-| Translate answer into the regional language | ⚠️ Off on laptop | The translator model is heavy; on the laptop the voice speaks English. Turn on with a GPU |
+| Answer in the regional language | ⚠️ Off on laptop | The answer text + spoken reply are English. The translator model is heavy (~4 GB); turn on with a GPU |
 
 ### How to run it on your computer
 ```bash
@@ -71,8 +80,9 @@ scripts/      → test files that prove each part works
 ```
 
 ### Is it finished?
-Yes — **all 15 phases are complete**, everything is tested, and it's ready to put
-online (Hugging Face Spaces). The detailed, technical phase-by-phase log is below.
+Yes — **all 15 phases are complete**, plus the LangChain agent, the 4-language
+screen, and a live deployment on Render. Everything is tested. The detailed,
+technical phase-by-phase log is below.
 
 ---
 
@@ -694,6 +704,117 @@ typed pipeline, and asserts **no heavy ML library is imported**. All pass.
 **Regression after lite work:** pytest 13/13, Phase 9 14/14, Phase 10 11/11,
 evaluate HEALTHY — all still green in normal (FAISS) mode.
 
+**Deployment fixes along the way:** Render first defaulted to Python 3.13 (no
+wheel for the pinned numpy → source build → `No module named 'pkg_resources'`) —
+fixed with `.python-version` = 3.11.9 and loose lite pins. Then a stale
+`gradio==4.44.0` pin paired with a too-new `huggingface_hub` (`HfFolder` import
+error) — fixed by pinning `gradio==6.26.0`, the version the code runs on. The
+unused `openai-whisper` (STT uses transformers) and `langchain` pins were dropped
+from `requirements.txt` at that point.
+
+---
+
+### UI Redesign — dark-first editorial theme
+**Status:** Complete (commit `717d1f7`)
+
+Replaced the tabbed green theme with an editorial layout: near-black canvas (with
+a full light palette following the viewer's system setting), hairline rules
+instead of boxes, letterspaced section labels, a wheat-gold accent, a large hero
+headline, a two-panel console (ask on the left, answer on the right, stacking on
+narrow screens), tool-status chips, click-to-fill example questions, and a
+collapsible "Transcript & pipeline" diagnostics panel. Theme and CSS live in
+`app/ui/gradio_app.py` (`build_theme`, `_CSS`).
+
+---
+
+### LangChain Agent — default agent engine
+**Status:** Complete · closes the brief's "LangChain agents with tool-calling"
+
+- **`app/agents/langchain_agent.py`** — the three farm tools are LangChain `Tool`s
+  (`crop_knowledge`, `weather_forecast`, `government_schemes`) and a ReAct
+  `AgentExecutor` (`create_react_agent`) runs the loop: at each step the model
+  picks the next tool or finishes; LangChain executes it and feeds back the
+  observation. The final answer is then written from what the agent gathered, so
+  the output format is identical to the sequential engine.
+- **`app/models/langchain_llm.py`** — adapter exposing any project LLM
+  (StubLLM / local Qwen / HF API) to LangChain.
+- **Who decides on CPU:** `StubLLM._react_step` — a deterministic policy that
+  speaks LangChain's exact ReAct text protocol, choosing tools from the same
+  rule-based router. The AgentExecutor, tool calls and parsing are real
+  LangChain. With a real LLM configured (Colab notebook: Qwen 1.5B; GPU: Llama /
+  Gemma) the model makes the decisions — no code change.
+- **Resilience:** if the loop errors, stalls, or can't parse the model's output,
+  the deterministic orchestrator takes over — never a broken reply.
+- **Config:** `AGENT_BACKEND=langchain` (default) | `sequential`. If LangChain
+  isn't installed the app falls back automatically.
+- **Render:** LangChain added to `requirements-lite.txt`. Measured with the heavy
+  ML libraries absent (as on Render): 143 MB → 166 MB of the 512 MB limit.
+  (LangChain's optional `transformers` import is skipped when it isn't installed.)
+
+**New test:** `scripts/test_langchain_agent.py` — exact tool set for all 9 intents,
+answers for each, fallback when the model ignores the ReAct format or loops
+forever, and that the UI uses LangChain by default. **34/34 pass.**
+
+---
+
+### 4-Language Interface + Voice Questions in Every Language
+**Status:** Complete
+
+**The screen:** a picker in the top bar — `🇬🇧 English` · `🇮🇳 Hindi` ·
+`ਪੰਜਾਬੀ Punjabi` · `मराठी Marathi` — switches the whole interface: brand, headline,
+instructions, section labels, placeholders, the Ask button, the language
+readout, tool-status chips, the audio label, diagnostics, footer, and every
+error/help message. 47 strings × 4 languages live in **`app/ui/i18n.py`**. A
+switch re-renders 28 components; the page is tagged `lang="hi|pa|mr"` so the CSS
+relaxes the Latin-style letterspacing that would break Devanagari/Gurmukhi, and
+Noto Sans Devanagari/Gurmukhi were added to the theme fonts.
+
+**Voice questions:**
+- Whisper is now **forced to the chosen language** (`transcribe(language=…)`)
+  instead of guessing — auto-detect used to return "unknown" for Hindi.
+- Without the 4 GB translator, regional speech reaches the English agent via
+  **Whisper's own speech→English translation** (`transcribe(translate=True)`)
+  **plus the original transcript** (`AgentState.routing_text()`).
+- **Finding (tested):** whisper-small's translation works for Hindi but fails for
+  Marathi (it just sounds the words out) and Punjabi ("My wheat is 40 days old"
+  came out as "My wife is 40 days old"). The native transcripts still contain the
+  key words, so the router gained a **Hindi/Marathi/Punjabi farm vocabulary**
+  (`StubLLM._REG_*`): weather/scheme/fertiliser/pest/irrigation words, crop names
+  in all three scripts (incl. Punjabi written in Devanagari, which Whisper often
+  produces), 22 city names, and spoken crop ages (चालीस / चाळीस / ਚਾਲੀ दिन → 40 days).
+  A place named with nothing else matching is treated as a weather question.
+- Result: spoken questions in **all four languages** reach the right tool.
+
+**Scope (decided):** typed questions are English — typed Hindi/Punjabi/Marathi
+gets a polite message, in that language, asking for English (unless IndicTrans2
+is configured, in which case it's translated). Answers and the spoken reply are
+English without IndicTrans2; a note under "Response" says so in the chosen
+language.
+
+**New test:** `scripts/test_i18n.py` — string completeness (same placeholders in
+every language), exact picker labels, the re-render wiring, localised messages,
+all 12 spoken example phrases + 4 real garbled Whisper transcripts routed from
+native words, and a **voice section** that synthesises a question in each
+language (gTTS), runs Whisper, and checks the agent calls the right tool.
+**33/33 pass.** `scripts/test_lite_mode.py` now *blocks* the heavy libraries
+(as on Render) and also checks the Lite screen (mic hidden, picker present).
+
+**Browser-verified:** all four languages switch every listed element; asking a
+question in the Marathi screen returned live Pune weather with the readout and
+chips in Marathi; switching to Punjabi afterwards re-rendered them in Punjabi;
+no console errors.
+
+---
+
+### Deployment status
+- **Render (Lite) — live:** https://farmer-advisory-voice-agent.onrender.com
+  (verified HTTP 200, serving the latest build; redeploys on every push to `main`).
+- **Colab notebook — ready:** `notebooks/run_full_app_colab.ipynb` runs the full
+  app (4-language mic, LangChain agent on Qwen 1.5B, semantic search, voice).
+  Dry-run verified locally; a real Colab run needs your Google account.
+- **Hugging Face Spaces — not deployed:** Gradio Spaces need a paid plan since
+  mid-2026; the Spaces config is kept in the repo.
+
 ---
 
 ## Current Dev Mode Settings (`.env`)
@@ -710,13 +831,16 @@ evaluate HEALTHY — all still green in normal (FAISS) mode.
 | `RAG_MIN_SCORE` | `0.30` | Below this → "insufficient information" (no fabrication) |
 | `RAG_BACKEND` | `faiss` | `bm25` = keyword search, no torch (LITE_MODE forces it) |
 | `LITE_MODE` | `false` | `true` = tiny footprint for the free Render deploy |
+| `AGENT_BACKEND` | `langchain` (default) | `sequential` = deterministic orchestrator |
 | `DEV_MODE` | `true` | Show pipeline trace panel in UI |
 
-## Project Status — ALL 15 PHASES COMPLETE ✅
+## Project Status — ALL 15 PHASES COMPLETE ✅ + LIVE
 
-The English reasoning core is fully built, tested, evaluated, and deployment-ready.
-On CPU/dev the voice speaks English; enabling real IndicTrans2 (`USE_STUB_TRANSLATION=false`)
-or deploying to the GPU Space (`TTS_ENGINE=parler`) delivers full regional voice output.
+All 15 phases are built, tested and evaluated, plus the LangChain agent (default
+engine), the 4-language interface with voice questions in every language, and a
+live free deployment on Render. On CPU/free hosting the answer and spoken reply
+are English; enabling real IndicTrans2 (`USE_STUB_TRANSLATION=false`) and
+Parler (`TTS_ENGINE=parler`) on a GPU host delivers them in the regional language.
 
 ## GitHub Repository
 
