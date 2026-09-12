@@ -890,6 +890,42 @@ rules and told the farmer in Hindi — and the key never appeared in the logs.
 
 ---
 
+### One-Screen Rebuild for Farmers Who Can't Read + Faster Replies
+
+**What was wrong:** two columns of panels, technical readouts, chips and
+instructions competing for attention, and a spoken question taking ~50 seconds.
+
+**The screen now** — one narrow column, one job at a time, almost nothing to read:
+
+| Before | Now |
+|---|---|
+| Two columns, 8 visible sections | One column: language → microphone → answer → samples |
+| Small language links in a corner | Four big language buttons, always on screen (sticky), in their own scripts |
+| Mic in a panel among many | One large bordered microphone, the only thing to tap |
+| Tool chips: 3 always-on badges ("idle / used") | One quiet line naming the sources, only after an answer |
+| "Question language" readout on screen | Moved into the folded "Transcript & pipeline" |
+| Typing box, location box, notes all visible | Folded away: "Ask by typing", "📍 My village", "What I can help with" |
+| Small player controls | Big **🔊 Listen again** button |
+| Sample questions: English only, filled the box | In the farmer's own language; tapping one **asks it straight away** |
+| — | The page scrolls to the answer; bigger type everywhere |
+
+**Faster replies** (same question, measured in the browser):
+
+| Step | Before | Now | How |
+|---|---|---|---|
+| Typed question → answer on screen | 11.9 s | **0.3–3.8 s** | The words are sent to the page as soon as they exist; the voice follows |
+| Making the voice (gTTS, 420 chars) | 11.5 s | **1.2 s** | Google's endpoint takes ~100 characters per request; the parts are now fetched at the same time and joined |
+| Voice question (Hindi, whisper-small) | 38–49 s | **~10 s** | Whisper was looping ("अगर अगर अगर…") and generating to its 448-token limit: capped the length, penalised repeats, and dropped the second English pass unless the keyword rules understood nothing |
+| First question after a restart | +20–30 s | 0 | The speech model and scheme index load in a background thread at startup |
+| A garbled transcript | Answered the wrong question | "I could not hear you — please say it again" | Repetition detector (`_is_degenerate`) |
+
+Also: spoken text now stops before the standing "Important / Source" boilerplate,
+and **typed Hindi / Punjabi / Marathi is accepted in every build** (the keyword
+rules understand it; the answer is English without a Groq key, and the page says
+so) — which is what makes the sample questions work in all four languages.
+
+---
+
 ### Deployment status
 - **Render (Lite) — live:** https://farmer-advisory-voice-agent.onrender.com
   (verified HTTP 200). Redeploy after a push with Render's **Manual Deploy →
