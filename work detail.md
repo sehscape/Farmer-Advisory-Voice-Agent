@@ -1,954 +1,682 @@
-# Farmer Advisory Voice Agent — Work Detail
+# Farmer Advisory Voice Agent — Work Detail (Beginner's Guide)
+
+*Last updated: 22 September 2026*
+
+This file explains the whole project from zero. You don't need to know anything
+about AI or programming to follow it. Read it top to bottom once; after that, use
+the table of contents to jump to what you need.
+
+**Live link:** https://farmer-advisory-voice-agent.onrender.com
+**Code:** https://github.com/sehscape/Farmer-Advisory-Voice-Agent
 
 ---
 
-## 📖 PROJECT EXPLAINED SIMPLY (read this first)
+## Table of contents
 
-### What is this project, in one line?
-A phone/computer app where a **farmer picks their language** (English, Hindi,
-Punjabi or Marathi), **asks a question** by voice or typing, and the app **speaks
-back real farming advice** — about their crop, the weather, and government schemes.
+1. [The project in one minute](#1-the-project-in-one-minute)
+2. [Words you need to know](#2-words-you-need-to-know)
+3. [The journey of one question](#3-the-journey-of-one-question)
+4. [Each part explained in detail](#4-each-part-explained-in-detail)
+5. [The three ways the app runs](#5-the-three-ways-the-app-runs)
+6. [The settings file (.env)](#6-the-settings-file-env)
+7. [Every important file, and what it does](#7-every-important-file-and-what-it-does)
+8. [How to run it on your laptop](#8-how-to-run-it-on-your-laptop)
+9. [How we prove it works (tests)](#9-how-we-prove-it-works-tests)
+10. [Putting it online (deployment)](#10-putting-it-online-deployment)
+11. [How we stop the AI from making things up](#11-how-we-stop-the-ai-from-making-things-up)
+12. [Problems we hit, and how we solved them](#12-problems-we-hit-and-how-we-solved-them)
+13. [Current status — what works, what doesn't](#13-current-status--what-works-what-doesnt)
+14. [Limitations and future work](#14-limitations-and-future-work)
+15. [How the project was built (timeline)](#15-how-the-project-was-built-timeline)
 
-**Live link:** https://farmer-advisory-voice-agent.onrender.com (open it a couple of
-minutes before a demo — the free server takes ~1 minute to wake up).
+---
 
-### Think of it like a small shop with 7 workers 🧑‍🌾
-Each "worker" is one piece of code. A question passes down the line:
+## 1. The project in one minute
 
-| # | Worker (the code file) | Its job, in plain words |
+### What is it?
+A website where an Indian farmer:
+1. **picks a language** — English, Hindi, Punjabi or Marathi,
+2. **asks a farming question out loud** (or types it),
+3. **hears the answer spoken back** in the language they picked.
+
+It answers three kinds of questions:
+
+| Kind | Example | Where the answer comes from |
 |---|---|---|
-| 1 | 👂 **Ears** — `models/stt.py` (Whisper) | Listens to the voice and writes down the words |
-| 2 | 🌐 **Translator (in)** — `models/translation.py` | Turns Hindi/Marathi/Punjabi words into English (the app thinks in English) |
-| 3 | 🧭 **Router** — `agents/intent.py` + `models/llm.py` | Reads the question and decides *what* is being asked (crop? weather? scheme?). Knows farm words in English, Hindi, Marathi and Punjabi |
-| 4 | 🗂️ **Scheme finder** — `tools/scheme_tool.py` + `rag/` | Searches real government-scheme documents for the answer |
-| 5 | 🌦️ **Weather checker** — `tools/weather_tool.py` | Gets the live weather for the farmer's town |
-| 6 | 🌱 **Crop expert** — `tools/crop_tool.py` | Looks up stage-by-stage advice for the crop |
-| 7 | 🧠 **Brain** — `models/llm.py` (the AI) | Reads everything the workers found and writes one clear answer |
-| → | 🌐 **Translator (out)** + 👄 **Mouth** — `translation.py` + `models/tts.py` | Turns the English answer back into the farmer's language and **speaks it aloud** |
+| 🌱 **Crop care** | "My wheat is 40 days old, which fertilizer?" | A file of expert advice for 6 crops, stage by stage |
+| 🌦️ **Weather** | "Will it rain in Nashik tomorrow?" | A live weather service on the internet |
+| 🏛️ **Government schemes** | "How do I apply for PM-KISAN?" | Official scheme documents, searched by the app |
 
-The **manager** that decides which workers to call is a **LangChain agent**
-(`agents/langchain_agent.py`) — it thinks step by step: "I need the weather… now
-the scheme documents… now I can answer." If it ever gets stuck, a simpler
-backup manager (`agents/orchestrator.py`) takes over. The **shop counter** the
-farmer uses (the screen) is `ui/gradio_app.py`, and every word on it comes from
-`ui/i18n.py` in all four languages.
+### Who is it for?
+Farmers who speak only their regional language, and who may not read well. That's
+why it is **voice-first**: every message on the screen is also spoken aloud.
 
-### The journey of one question (start to finish)
-```
-Farmer picks a language  →  speaks, taps stop  →  Ears write it down (in that language)
-   →  Understanding: what is asked? is anything missing?
-        (missing crop age / village / crop → ask back out loud, then continue)
-   →  LangChain agent picks the right workers
-   →  they fetch crop + weather + scheme facts
-   →  Brain writes the advice IN THE FARMER'S LANGUAGE  →  speak it out loud 🔊
-```
+### Why is it useful?
+Good farming advice exists, but it's usually in long English or Hindi documents.
+This app turns "reading a PDF" into "asking a question and listening".
 
-### The golden rule of this project 🏅
-**The AI is never allowed to make things up.** Scheme details come from real
-documents, weather comes from a real weather service, crop advice comes from a
-fixed knowledge file. The AI only *phrases* what the workers found. If there's no
-reliable info, the app says "I don't have enough information" instead of guessing.
+### The one rule that matters most
+**The AI is never allowed to invent facts.** It only rephrases what the tools
+found (crop file, weather service, scheme documents). If it can't find a reliable
+answer, it says so. This matters because wrong farm advice — a wrong fertilizer
+dose, for example — can cost a farmer their crop.
 
-### What runs on your laptop (no GPU) vs. what needs a GPU
-| Part | On your laptop? | Note |
+---
+
+## 2. Words you need to know
+
+You'll see these words everywhere in this project and in interviews.
+
+| Word | Plain meaning | In this project |
 |---|---|---|
-| Screen in English / Hindi / Punjabi / Marathi | ✅ Yes | Pick at the top right; works on Render too |
-| Voice questions in all 4 languages | ✅ Yes | Hindi is heard well; Marathi/Punjabi transcripts are rough, but the router still finds the crop, place and topic |
-| Ears, Router, LangChain agent, Crop, Weather, Scheme search | ✅ Yes | All work fully |
-| Voice output | ✅ Yes (gTTS) | Real voices, needs internet |
-| The AI brain | ✅ Small version | A small model runs on CPU (~1 min/answer). The big 8B model needs a GPU |
-| Answer in the regional language | ✅ With a free Groq key | Groq's cloud does the heavy listening + language work (laptop **and** Render). Without the key: English answers (the local translator is ~4 GB / GPU) |
-
-### How to run it on your computer
-```bash
-cd multilingual-agri-agent
-venv\Scripts\activate            # turn on the virtual environment
-python scripts/build_scheme_index.py   # one time — prepares the scheme search
-python app.py                    # opens the app at http://localhost:7860
-```
-Three switches live in the `.env` file:
-- `GROQ_API_KEY=gsk_…` → **voice + answers in Hindi / Punjabi / Marathi** (free key, DEPLOY.md section C). Empty → off.
-- `USE_STUB_LLM=true` → **fast** answers (simple, instant). `false` → **real AI** brain (slower on CPU).
-- `USE_STUB_TRANSLATION=true` → without Groq, the voice speaks **English**. `false` → local translator (heavy model / GPU).
-
-### Where things live (folder map)
-```
-app/agents/   → the router, the manager, and answer-writing
-app/tools/    → crop, weather, and scheme "workers"
-app/models/   → ears (STT), brain (LLM), voice (TTS), translator
-app/rag/      → the government-scheme document search
-app/ui/       → the screen the farmer sees
-data/         → crop facts + scheme documents
-scripts/      → test files that prove each part works
-```
-
-### Is it finished?
-Yes — **all 15 phases are complete**, plus the LangChain agent, the 4-language
-screen, voice + answers in all 4 languages on the live Render site (with a free
-Groq key), and spoken follow-up questions when something is missing. Everything
-is tested. The detailed, technical phase-by-phase log is below.
+| **AI model** | A program that learned a skill from lots of examples | We use models for listening, understanding, translating |
+| **LLM** (Large Language Model) | An AI that reads and writes text, like ChatGPT | `gpt-oss-120b` understands the question and writes the answer |
+| **STT** (Speech-to-Text) | Turns a voice recording into written words | **Whisper** does this |
+| **TTS** (Text-to-Speech) | Turns written words into a voice recording | **gTTS** does this |
+| **API** | A way for one program to ask another program for something over the internet | We call the Groq API, the weather API |
+| **API key** | A secret password that lets you use an API | `GROQ_API_KEY`, kept in `.env`, never shared |
+| **Groq** | A company that runs AI models on its fast computers, with a free plan | Runs Whisper and the LLM for us, so our small server doesn't have to |
+| **Open-weight model** | An AI model whose files are public, anyone can run it | `gpt-oss-120b`, Whisper, NLLB are all open |
+| **Prompt** | The instructions and text you send to an LLM | e.g. "Reply only in Marathi, use only these facts…" |
+| **Token** | A small piece of a word; LLMs read and write in tokens | Groq's free limits are counted in tokens |
+| **Agent** | An AI program that decides *which tools to use* to answer | Decides: crop tool? weather tool? scheme tool? |
+| **Tool** | A normal function the agent can call | `crop_knowledge`, `weather_forecast`, `government_schemes` |
+| **LangChain** | A popular Python library for building agents | Runs our agent loop |
+| **ReAct** | An agent style: *Reason* ("I need weather") → *Act* (call tool) → look at result → repeat | Our LangChain agent works this way |
+| **RAG** (Retrieval-Augmented Generation) | First *find* the right text in your documents, then let the AI write the answer *from that text* | Used for government schemes |
+| **Chunk** | A small piece of a long document | Scheme files are cut into 1000-character chunks |
+| **Embedding** | A list of numbers that captures the *meaning* of a text | Similar meanings → similar numbers |
+| **Vector database / FAISS** | A tool that stores embeddings and quickly finds the closest ones | Finds the scheme chunk closest to the question |
+| **BM25** | An older search method that matches *keywords* (no AI, very light) | Used on the free server instead of FAISS |
+| **Translation model** | An AI that translates between languages | **NLLB** (by Meta) translates English answers into Hindi/Marathi/Punjabi on the laptop |
+| **Glossary** | A fixed list of word translations written by hand | Stops NLLB mistranslating farm terms |
+| **Stub** | A simple stand-in for a heavy part, used for speed or testing | `StubLLM` = rule-based brain that needs no AI |
+| **Fallback** | Plan B when Plan A fails | If Groq fails → translate with NLLB → else English with a notice |
+| **Gradio** | A Python library for making web pages for AI apps | Builds our whole screen |
+| **i18n** (internationalisation) | Making software work in many languages | `app/ui/i18n.py` holds every message in 4 languages |
+| **Render** | A website-hosting company with a free plan | Hosts our live site |
+| **Deploy** | Put the app on a server so anyone can open it | We deploy to Render |
+| **Environment variable / `.env`** | Settings kept outside the code (like the API key) | `.env` on the laptop; "Environment" page on Render |
+| **LITE_MODE** | Our special small version of the app for the free server | Turns off everything heavy |
+| **Git / GitHub** | Tools that save every version of the code | Our code is on GitHub |
+| **Virtual environment (venv)** | A private folder of Python libraries for one project | `venv/` in the project |
 
 ---
 
-## Project Overview
+## 3. The journey of one question
 
-A multilingual voice-first agricultural assistant for farmers in India.
-Farmers speak in their regional language (Hindi, Marathi, or Punjabi) and receive
-actionable farming advice in the same language via voice output.
-
-**Target users:** Farmers in Hindi, Marathi, and Punjabi speaking regions of India
-**Deployment target:** Hugging Face Spaces (Gradio)
-**Total phases:** 15
-
----
-
-## Architecture (English-Pivot Pipeline)
+Let's follow one real question: the farmer has **Hindi** selected and says
+*"मेरी गेहूं 40 दिन की है, क्या खाद डालूं?"* ("My wheat is 40 days old, what
+fertilizer should I apply?").
 
 ```
-Farmer speaks regional language
-        ↓
-  Whisper STT → regional text (original_text)
-        ↓
-  IndicTrans2 → English text (english_text)
-        ↓
-  Intent Extraction (LLM) → crop, stage, intent flags
-        ↓
-  Tool Calls → crop knowledge / weather / government schemes
-        ↓
-  LLM Answer Generation → English answer (english_answer)
-        ↓
-  IndicTrans2 → regional text (regional_answer)
-        ↓
-  Indic TTS → regional audio output
+  1. 🗣️  Farmer taps the mic, speaks, taps stop
+  2. 👂  Whisper writes down the words (in Hindi)
+  3. 🧐  Understanding: crop = wheat, age = 40 days, wants = crop advice (fertilizer)
+  4. ❓  Clarify: is anything missing? → No
+  5. 🧭  LangChain agent: call the crop_knowledge tool
+  6. 🌱  Crop tool: wheat at 40 days = "Tillering" stage → irrigation, urea dose, pests
+  7. 🧠  Writer: turn those facts into a short answer IN HINDI
+  8. 🔊  gTTS: turn the Hindi answer into speech; it plays by itself
 ```
 
-All internal AI processing happens in English.
-Regional language appears only at the input (STT) and output (TTS) boundaries.
-
----
-
-## COMPLETED PHASES
-
----
-
-### Phase 1 — Project Setup
-**Status:** Complete
-
-**What was built:**
-- Full project folder structure (`app/`, `data/`, `tests/`, `scripts/`, `notebooks/`)
-- Central configuration (`app/config.py`) — all settings controlled via `.env` file
-- `AgentState` dataclass (`app/agents/state.py`) — single object that carries all data through the pipeline (transcription, English translation, intent, tool outputs, final answer)
-- Prompt templates (`app/agents/prompts.py`) — intent extraction prompt and final answer prompt
-- Gradio UI skeleton (`app/ui/gradio_app.py`) — basic layout with microphone input
-- Entry points — `app.py` (Hugging Face Spaces) and `app/main.py` (local dev)
-- `.env` / `.env.example` — environment variable configuration
-- `.gitignore` — excludes secrets, virtual environment, model weights
-- `requirements.txt` — all dependencies listed
-
-**Key design decision:** English-pivot architecture — the LLM never sees regional language text. IndicTrans2 handles all translation at the boundaries.
-
----
-
-### Phase 2 — Speech-to-Text (Whisper STT)
-**Status:** Complete
-
-**What was built:**
-- `app/models/stt.py` — Whisper-based speech-to-text
-- `WhisperSTT` class — loads OpenAI Whisper model, transcribes audio
-- **Auto language detection** — detects Hindi, Marathi, Punjabi, or English automatically from the speech itself (no manual selection needed)
-- `StubSTT` — returns hardcoded Hindi/Marathi/Punjabi samples for offline testing
-- `app/utils/audio.py` — converts browser audio formats (webm/ogg) to 16kHz mono WAV for Whisper
-- Test scripts: `tests/test_stt.py` and `scripts/test_stt_phase2.py`
-
-**Models used:**
-- Local dev (CPU): `openai/whisper-tiny`
-- HF Spaces (GPU): `openai/whisper-large-v3`
-
-**How it works:**
-1. User records voice via browser microphone
-2. Audio converted to WAV format
-3. Whisper transcribes the speech AND detects which language was spoken
-4. Returns: `{ "text": "मेरी गेहूं...", "language": "hi" }`
-
----
-
-### Phase 3 — Translation (IndicTrans2)
-**Status:** Complete
-
-**What was built:**
-- `app/models/translation.py` — IndicTrans2 translation (regional ↔ English)
-- `IndicTrans2Translator` — loads AI4Bharat's IndicTrans2 models (1B parameters each direction)
-- `PassthroughTranslator` — stub that echoes text with `[STUB-EN]` tag for fast local dev
-- `app/models/indic_processor.py` — pure-Python text normalizer
-
-**Problem solved:** The official `indictranstoolkit` library requires Microsoft Visual C++ Build Tools to compile on Windows. A pure-Python replacement was written using `indic-nlp-library` and `sacremoses` that provides the same interface without needing MSVC.
-
-**Two translation directions:**
-- Input boundary: regional language → English (`ai4bharat/indictrans2-indic-en-1B`)
-- Output boundary: English → regional language (`ai4bharat/indictrans2-en-indic-1B`)
-
-**Languages supported:**
-| Language | Flores-200 Code |
-|---|---|
-| Hindi | `hin_Deva` |
-| Marathi | `mar_Deva` |
-| Punjabi | `pan_Guru` |
-| English | `eng_Latn` |
-
-**Config flag:** `USE_STUB_TRANSLATION=true` in `.env` skips the 4GB model download for fast local dev. Set to `false` to use real IndicTrans2.
-
-**Gradio UI update:** Added "English translation" output box showing the translated text.
-
----
-
-### Phase 4 — Intent Extraction + LLM Answer Generation
-**Status:** Complete
-
-**What was built:**
-- `app/agents/intent.py` — extracts structured intent from the English query using LLM
-- `app/agents/answering.py` — generates a structured English answer using LLM
-- Updated `app/models/llm.py` — added context-aware StubLLM
-
-**Intent extraction:**
-The LLM reads the English-translated query and returns a JSON object:
-```json
-{
-  "intent": "crop_advice",
-  "crop": "wheat",
-  "crop_stage_days": 40,
-  "location": null,
-  "needs_weather": true,
-  "needs_scheme": false,
-  "needs_crop_info": true
-}
-```
-
-These fields populate `AgentState` and control which tools are called next.
-
-**Intent types supported:**
-`crop_advice`, `weather`, `government_scheme`, `irrigation`, `fertilizer`, `pest_or_disease`, `general_farming`, `multiple`, `unknown`
-
-**Answer generation:**
-LLM receives the farmer's English query + tool outputs (crop knowledge, weather data, scheme documents) and produces a structured answer:
-```
-Situation:
-[1-2 sentences about the farmer's situation]
-
-What you should do:
-1. ...
-2. ...
-3. ...
-
-Important:
-[Key cautions]
-```
-
-**LLM options:**
-- `HuggingFaceInferenceAPILLM` — calls HF Inference API (needs HF token)
-- `HuggingFaceLocalLLM` — loads model locally (needs GPU, not yet implemented)
-- `StubLLM` — builds crop-specific answers from injected context (works offline)
-
-**Config flag:** `USE_STUB_LLM=true` in `.env` uses StubLLM without needing an HF token.
-
----
-
-### Phase 5 — Crop Knowledge Tool
-**Status:** Complete
-
-**What was built:**
-- `app/tools/crop_tool.py` — crop knowledge lookup tool
-- `data/crops/` — JSON knowledge base for 6 crops
-
-**Crops in knowledge base:**
-| Crop | Local names recognized |
-|---|---|
-| Wheat | गेहूं, ਕਣਕ, गव्हू |
-| Rice | धान, चावल, ਝੋਨਾ, भात |
-| Onion | प्याज, कांदा, ਪਿਆਜ਼ |
-| Tomato | टमाटर, ਟਮਾਟਰ, टोमॅटो |
-| Cotton | कपास, ਕਪਾਹ, कापूस |
-| Maize | मक्का, मकई, ਮੱਕੀ |
-
-**How it works:**
-1. Reads `state.crop` and `state.crop_stage_days` from AgentState (set by Phase 4)
-2. Resolves crop name — handles English, Hindi, Marathi, Punjabi names
-3. Finds the exact growth stage matching the crop's current age in days
-4. Returns stage-specific advisory:
-   - Current growth stage name and description
-   - Irrigation schedule for this stage
-   - Fertilizer recommendations for this stage
-   - Pests and diseases to watch for at this stage
-   - Practical tips
-
-**Example output for Wheat at 40 days (Tillering stage):**
-```
-Current Stage: Tillering (days 26–50)
-Irrigation  : Second irrigation at 40–45 days after sowing
-Fertilizer  : Apply 25 kg Urea per acre with second irrigation
-Watch for   : Aphids, Powdery mildew, Weed competition
-Tips        : Remove weeds before 35 days
-```
-
-**Pipeline position:** Crop tool runs BEFORE the LLM generates the answer, so the LLM has real knowledge to work with instead of hallucinating advice.
-
----
-
-## COMPLETED PHASES (continued)
-
----
-
-### Phase 6 — Weather Tool
-**Status:** Complete
-
-**What was built:**
-- `app/tools/weather_tool.py` — full weather data tool
-- `scripts/test_weather_phase6.py` — smoke test (5 test cases, all pass)
-
-**How it works:**
-1. Farmer's location name (e.g. "Pune", "Ludhiana") is geocoded to lat/lon using the **Open-Meteo Geocoding API** (free, no API key)
-2. **Open-Meteo Forecast API** is called to fetch:
-   - Current conditions: temperature, feels-like temp, humidity, precipitation, wind speed, weather condition
-   - 3-day daily forecast: min/max temp, rainfall amount, rain probability, wind speed
-3. WMO weather codes are translated to human-readable descriptions (e.g. "Thunderstorm", "Light drizzle")
-4. **Farming-specific advisories** are generated by rule:
-   - Extreme heat (>38°C) → avoid pesticide spraying, irrigate
-   - Near-frost (<5°C) → protect sensitive crops
-   - High humidity (>85%) → fungal disease risk warning
-   - Heavy rain (>20mm) → delay fertilizer application
-   - Thunderstorm → keep people and equipment away from fields
-5. Returns both raw data dict (for LLM reasoning) and a formatted English summary string
-
-**Failure handling:** Unknown location, API timeout, or missing location all return clean error messages — no crashes.
-
-**No new dependencies required** — `requests` was already in `requirements.txt`.
-
----
-
-### Phase 7 — Government Scheme RAG (PDF → FAISS)
-**Status:** Complete
-
-**What was built:**
-- `data/schemes/raw/` — 4 government scheme text files with real scheme information
-- `app/rag/scheme_rag.py` — complete RAG pipeline
-- `app/tools/scheme_tool.py` — agent-facing tool wrapper with lazy loading
-- `scripts/build_scheme_index.py` — one-time index builder script
-- `scripts/test_scheme_phase7.py` — smoke test (5 queries, all pass)
-- `data/vectorstore/schemes.faiss` + `schemes_meta.json` — built FAISS index (15 chunks)
-
-**Schemes in knowledge base:**
-| Scheme | What it covers |
-|---|---|
-| PM-KISAN | Rs 6,000/year income support — eligibility, how to apply, documents needed |
-| PMFBY | Crop insurance — crops covered, premium rates, claim process |
-| Kisan Credit Card (KCC) | Agricultural loans — interest rates (4–7%), eligibility, insurance |
-| Soil Health Card | Soil nutrient testing — 12 parameters tested, how to get the card |
-
-**RAG Pipeline:**
-1. **Load** — reads `.txt` and `.pdf` files from `data/schemes/raw/`
-2. **Chunk** — splits text into overlapping chunks (1000 chars, 150 overlap) on natural boundaries (newlines, periods)
-3. **Embed** — `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (local dev) / `BAAI/bge-m3` (HF Spaces)
-4. **Index** — FAISS `IndexFlatIP` with L2-normalized vectors (cosine similarity)
-5. **Save/Load** — index persists to `data/vectorstore/schemes.faiss` + metadata JSON
-6. **Query** — embed question → FAISS search → return top-K chunks with source and relevance score
-
-**Config flag:** `USE_STUB_RAG=false` in `.env`. Set to `true` to skip FAISS load during fast local dev.
-
-**Dependency fixes required:**
-- `faiss-cpu` upgraded from `==1.8.0` to `>=1.9.0` (NumPy 2.x compatibility)
-- `sentence-transformers` upgraded from `==3.0.1` to `>=3.3.0` (compatible with Gradio's huggingface-hub)
-
-**To rebuild index after adding new scheme files:**
-```
-python scripts/build_scheme_index.py
-```
-
----
-
-### Phase 8 — Agent Orchestrator (Tool Orchestration)
-**Status:** Complete
-
-**What was built:**
-- `app/agents/orchestrator.py` — sequential tool orchestrator
-- `app/agents/answering.py` — updated weather/scheme formatters (removed Phase placeholder text)
-- `app/ui/gradio_app.py` — wired orchestrator in place of manual Steps 4–7
-- `scripts/test_agent_phase8.py` — smoke test (5 test cases, all pass)
-
-**How it works:**
-The orchestrator takes `AgentState` after intent extraction and decides which tools to call based on the intent flags set by the LLM:
-
-```
-AgentState (with intent flags)
-    ├─ needs_crop_info=True  → Crop knowledge tool
-    ├─ needs_weather=True    → Weather tool (Open-Meteo)
-    ├─ needs_scheme=True     → Scheme RAG (FAISS)
-    └─ always               → LLM answer generation
-```
-
-**Design decision:** Sequential orchestration (not ReAct loop) because:
-- Intent extraction already determines which tools are needed
-- Sequential is deterministic, fast, and avoids hallucination from looping
-- Multi-intent queries (e.g. "crop + weather + scheme") are all handled in one pass
-
-**Test cases verified:**
-1. Crop advice (wheat at 40 days) — crop tool fires
-2. Weather query with location (Pune) — crop + weather tools fire
-3. Government scheme query — scheme RAG fires
-4. Multi-intent (cotton + Nagpur + schemes) — all 3 tools fire
-5. Weather without location — graceful skip with informative message
-
----
-
-### UI Redesign
-**Status:** Complete
-
-**What was changed:**
-- `app/ui/gradio_app.py` — full redesign for farmer-friendliness
-- `app/main.py` — CSS moved to `launch()` (Gradio 6 compatibility); `share=True` enabled
-
-**Key improvements over old UI:**
-
-| Before | After |
-|---|---|
-| 7 stacked output boxes | 3 clean tabs (Answer / Transcript / Details) |
-| No visual hierarchy | Answer box is the hero — large, green-tinted |
-| No tool feedback | Colour-coded pills: 🌱 Crop · 🌤️ Weather · 📋 Scheme |
-| No examples | Collapsible accordion with 4 examples each in Hindi, Marathi, Punjabi |
-| Plain Gradio default | Agriculture-green theme with custom CSS |
-| Language buried in output | Language badge prominently in input column |
-| Dev trace always visible | Trace hidden in Details tab (dev mode only) |
-
-**Tab structure:**
-- **💬 Answer** — main answer box + tool badges + voice output placeholder
-- **📝 Transcript** — what the farmer said + English translation
-- **🔍 Details** — intent extraction result + pipeline trace (dev mode)
-
-**Example queries added (in UI accordion):**
-- 4 Hindi examples (wheat fertilizer, rain/irrigation, PM-KISAN, tomato yellowing)
-- 4 Marathi examples (cotton fertilizer, Nashik weather, scheme documents, onion yellowing)
-- 4 Punjabi examples (wheat fertilizer, Ludhiana rain, KCC application, rice pests)
-
-**Public sharing:** `share=True` — Gradio prints a public URL on startup (valid for 72 hours).
-
----
-
-### Phase 1–8 Hardening (spec-alignment pass)
-**Status:** Complete
-
-**Why:** Lock Phases 1–8 to a "runs perfectly and matches the master spec" state
-before starting Phase 9. Fixes real bugs and closes gaps against the spec's
-anti-hallucination / grounding requirements (spec §12, §19–22, §35, §33).
-
-**What was changed:**
-
-- **UTF-8 console fix (Windows bug).** Test scripts crashed with
-  `UnicodeEncodeError` when printing the `→` character on Windows (cp1252 console).
-  Added `enable_utf8_console()` in `app/utils/logging.py` and call it from
-  `app/main.py`, `scripts/test_weather_phase6.py`, `scripts/test_scheme_phase7.py`,
-  `scripts/test_agent_phase8.py`, and `scripts/build_scheme_index.py`.
-
-- **StubLLM answer generation rewritten** (`app/models/llm.py`):
-  - Fixed the "Your your crop crop" text bug.
-  - The stub now composes the answer from **all** tool outputs — crop **and**
-    weather **and** scheme — instead of only the crop block. Weather advisories
-    become action steps; scheme facts get their own section plus a `Source:`
-    citation line (spec §35). Handles scheme-only / weather-only queries cleanly
-    (no more empty answer sections).
-  - Never presents missing data as fact: placeholder blocks are detected and
-    skipped.
-
-- **StubLLM intent extraction improved** (`app/models/llm.py`):
-  - Extracts **location** from a known-city list (previously always `null`).
-  - Only sets `crop` when a real crop is mentioned, and sets `needs_*` flags
-    accurately, so a weather-only question no longer forces the crop/RAG tools
-    (spec §22). Chooses `multiple` when more than one category applies.
-
-- **RAG "insufficient information" guardrail** (`app/config.py`,
-  `app/tools/scheme_tool.py`): added `RAG_MIN_SCORE` (default `0.30`). Retrieved
-  chunks below the threshold are dropped; if none qualify the tool returns a clear
-  "documents do not contain sufficient information" message instead of presenting
-  weak matches as fact (spec §12).
-  - **Measured finding:** a relevance threshold alone cannot reject a
-    *topically-related but unanswerable* query (e.g. "what new scheme comes next
-    month?" scores ~0.50, as high as real scheme queries). That refusal is a
-    faithfulness judgement made by the **real** LLM via `FINAL_ANSWER_PROMPT`; the
-    stub is only guaranteed to stay retrieval-grounded.
-
-- **New Phase 4→8 integration test** (`scripts/test_pipeline_phase4to8.py`):
-  drives the full dev pipeline (English query → intent extraction → orchestrator →
-  answer) and asserts correct tool **selection** (spec §22), location/crop/stage
-  extraction, and that scheme answers are always retrieval-grounded. 5/5 pass.
-
-**Test results after hardening (all green):**
-| Suite | Result |
-|---|---|
-| `scripts/test_pipeline_phase4to8.py` (new) | 5/5 PASS |
-| `scripts/test_agent_phase8.py` | 5/5 PASS |
-| `scripts/test_weather_phase6.py` | ALL PASS |
-| `scripts/test_scheme_phase7.py` | ALL PASS |
-| `pytest` | 13 passed |
-
----
-
-### Phase 9 — End-to-End English Pipeline Test
-**Status:** Complete
-
-**What was built:**
-- `scripts/test_e2e_phase9.py` — the definitive dev-mode integration test. Drives
-  real English queries through the full chain
-  (`english_text → intent extraction → orchestrator → answer`) and checks:
-  - **Part A — intent coverage (9/9):** every intent type is produced and routed
-    correctly — `crop_advice`, `weather`, `government_scheme`, `fertilizer`,
-    `irrigation`, `pest_or_disease`, `multiple`, `general_farming`, `unknown` —
-    and the agent never calls unnecessary tools (spec §22).
-  - **Part B — edge cases:** missing location (graceful weather skip),
-    unrecognised crop (no crash, honest answer), and empty input
-    (`intent=unknown`, no tools). Exceptions are recorded as failures so the
-    "never crashes" guarantee is itself under test (spec §36).
-  - **Part C — tool safety:** out-of-KB crop returns "not in the knowledge base";
-    off-topic scheme query (score ~0.17) trips the `RAG_MIN_SCORE` guardrail and
-    returns "insufficient information" instead of fabricating (spec §12/§33 TEST 5).
-  - **Result: 14/14 checks pass.**
-
-**Supporting changes to `app/models/llm.py` (StubLLM intent classifier):**
-- Emits the fine-grained intent labels the spec lists (`fertilizer`, `irrigation`,
-  `pest_or_disease`, `unknown`) via keyword groups, not just the coarse set.
-- Robust query parsing: captures only the `Query:` line, so an empty query no
-  longer accidentally matches the prompt template's own words.
-- Tool-routing flags derived cleanly from keyword groups (weather / scheme /
-  crop-topic), with `multiple` chosen when more than one category applies.
-
-**Note:** STT + output translation are still stubs, so this phase validates the
-*English* pipeline end-to-end (the internal reasoning core). The regional-language
-voice boundaries are Phase 10.
-
-**Full regression after Phase 9 — all green:**
-| Suite | Result |
-|---|---|
-| `test_e2e_phase9.py` (new) | 14/14 PASS |
-| `test_pipeline_phase4to8.py` | 5/5 PASS |
-| `test_agent_phase8.py` | 5/5 PASS |
-| `test_weather_phase6.py` | ALL PASS |
-| `test_scheme_phase7.py` | ALL PASS |
-| `pytest` | 13 passed |
-
----
-
-### Phase 10 — IndicTrans2 Output + Indic TTS
-**Status:** Complete
-
-**What was built:**
-- **Output translation** (`app/models/translation.py`): `translate_from_english`
-  (English → Hindi/Marathi/Punjabi via IndicTrans2 `en-indic-1B`) was already
-  implemented — now wired into the pipeline. Stub path speaks the English answer.
-- **TTS engines** (`app/models/tts.py`), selected by `TTS_ENGINE` in `.env`:
-  - `GttsTTS` — lightweight, CPU-friendly, needs internet. **Dev default.**
-    Produces real Hindi/Marathi/Punjabi/English speech (`.mp3`).
-  - `IndicParlerTTS` — production `ai4bharat/indic-parler-tts` (large, GPU).
-    Fully implemented; lazy-loads and guards the missing dependency with a clear
-    install hint (`pip install git+https://github.com/ai4bharat/indic-parler-tts`).
-  - `StubTTS` — returns no audio (text answer still shown).
-  - `generate(text, language)` now returns a **file path** (or `None`) so Gradio
-    can play it directly.
-- **Output stage wired** (`app/ui/gradio_app.py`, `_run_output_stage`): after the
-  answer is generated it translates English → regional (when real translation is
-  on) and synthesizes voice; the audio **auto-plays** in the UI's Answer tab.
-  Every failure path is graceful — TTS/translation errors never break the text
-  answer.
-- **Config:** `TTS_ENGINE` (default `gtts`). **Requirements:** added `gTTS`.
-
-**New test:** `scripts/test_tts_phase10.py` — gTTS audio for en/hi/mr/pa, engine
-factory, StubTTS, the production-guard, and the full translate+TTS output stage.
-**Result: 11/11 checks pass.**
-
-**Dev vs production note:**
-- On this CPU machine (dev), `TTS_ENGINE=gtts` gives real regional speech with no
-  large download. To hear the answer in the *regional language* (not English),
-  set `USE_STUB_TRANSLATION=false` (one-time IndicTrans2 `en-indic-1B` ~4 GB).
-- On HF Spaces (GPU), set `TTS_ENGINE=parler` for production-quality Indic voices.
-
-**Full regression after Phase 10 — all green:**
-| Suite | Result |
-|---|---|
-| `test_tts_phase10.py` (new) | 11/11 PASS |
-| `test_e2e_phase9.py` | 14/14 PASS |
-| `test_pipeline_phase4to8.py` | 5/5 PASS |
-| `test_agent_phase8.py` | 5/5 PASS |
-| `test_weather_phase6.py` | ALL PASS |
-| `test_scheme_phase7.py` | ALL PASS |
-| `pytest` | 13 passed |
-
----
-
-### Phase 11 — Full Gradio Pipeline Wiring
-**Status:** Complete
-
-- The UI runs the full chain end-to-end (STT → translate → intent → orchestrate →
-  answer → translate-out → TTS) and the **voice answer auto-plays** in the Answer
-  tab. Stub/pending labels removed (audio label is now live).
-- Added **total response-time** tracking (spec §38): `_run_pipeline` records the
-  end-to-end time into `state.latency["total"]` and appends `[Total] response
-  time: X.Xs` to the pipeline trace (Details tab, dev mode).
-
----
-
-### Phase 12 — Testing & Evaluation
-**Status:** Complete
-
-- `scripts/evaluate.py` — a reproducible metrics harness (spec §39) that scores:
-  intent-classification accuracy, agent tool-selection accuracy (+ unnecessary-call
-  count), RAG top-1 source accuracy & mean relevance, off-topic refusal rate, and
-  answer quality (grounded / actionable / cited). Doubles as a CI gate (exits
-  non-zero below sane floors).
-- Baseline (dev/stub): intent **100%**, tool-selection **100%**, RAG top-1 **100%**
-  (mean 0.60), off-topic refusal **100%**, answers actionable & cited **100%** →
-  **HEALTHY**.
-- Fixed an issue surfaced by the eval: the bare word "crop" was pulling the
-  crop-knowledge tool into scheme queries like "crop insurance"; the classifier now
-  triggers on a named crop or a specific topic word instead.
-
----
-
-### Phase 13 — Optimization
-**Status:** Complete
-
-- **GPU auto-detect** (`app/utils/device.py`): `get_device()` / `get_dtype()` pick
-  CUDA + float16 when a GPU is present, else CPU + float32. Wired into every model
-  singleton (STT/translation/LLM/TTS), so the same code runs fast on the Spaces GPU
-  with **zero change** on CPU.
-- **Caching**: geocoding results are `lru_cache`-d (a place's coordinates are
-  stable) so repeat weather lookups skip the network. Models remain singletons
-  (loaded once — spec §30).
-- Quantization / dtype documented for the production LLM (4-bit) in the README.
-
----
-
-### Phase 14 — Hugging Face Spaces Deployment (prep)
-**Status:** Complete
-
-- **`README.md`** now begins with the Spaces YAML header (`sdk: gradio`,
-  `sdk_version`, `app_file: app.py`, emoji, license).
-- **`packages.txt`** added with `ffmpeg` (browser mic audio decoding on Linux).
-- **`.env.example`** rewritten with clear DEV vs PRODUCTION profiles and all flags
-  (`USE_STUB_*`, `TTS_ENGINE`, `RAG_MIN_SCORE`).
-- **`requirements.txt`** documents the production Parler install.
-- README has a step-by-step Spaces deployment section (GPU Space, secrets, model
-  switch). *Actual push to a live Space is the only remaining manual step.*
-
----
-
-### Phase 15 — Documentation
-**Status:** Complete
-
-- README updated: status table (all phases ✅), voice/TTS engine details, GPU
-  auto-detect note, full Testing + Evaluation sections, Deployment guide,
-  Limitations, and Future Improvements.
-- Architecture decision (sequential orchestrator vs LangChain ReAct) documented.
-
----
-
-### Local (No-GPU) Completion — real open-source LLM on CPU
-**Status:** Complete
-
-To satisfy the brief's "open-source LLM" on a laptop **without a GPU**:
-- Implemented `HuggingFaceLocalLLM` (`app/models/llm.py`) — runs a small ungated
-  instruct model on CPU via transformers (chat template, greedy decoding, token
-  cap for responsiveness). Default `LOCAL_LLM_MODEL_ID=Qwen/Qwen2.5-0.5B-Instruct`
-  (~1 GB, Apache-2.0); bump to `Qwen2.5-1.5B-Instruct` for better quality.
-- **Intent routing** now uses a dedicated fast rule-based router
-  (`_get_router_llm`), separate from the answer LLM — so tool selection stays
-  instant and 100% reliable even when the answer model is a tiny CPU model.
-- Verified end-to-end on CPU (`scripts/test_local_llm.py`, 2/2 pass): ~50–70 s per
-  answer, grounded in the retrieved tool context.
-- **STT** set to `whisper-small` (matches the brief; better Indic accuracy than
-  tiny). Turn on the real brain with `USE_STUB_LLM=false` + `USE_HF_INFERENCE_API=false`.
-
-**Known CPU tradeoffs (report to mentor):** small model → occasional factual
-slips; ~1 min/answer on CPU. A GPU (or the 8B model via HF Inference API) removes
-both. TTS speaks English until IndicTrans2 translation is enabled (GPU-friendly).
-
----
-
-### Deployment — Colab (full) + Render Lite (free 24/7)
-**Status:** Complete (ready to deploy; the final click-through is manual)
-
-**Why two targets:** mid-2026 Hugging Face Spaces started requiring a **paid plan**
-for Gradio apps, and Render's free tier is only **512 MB RAM** — too small for
-Whisper + the embedding model. So:
-
-- **Google Colab** (`notebooks/run_full_app_colab.ipynb`) — runs the **full** app
-  (mic, real LLM, semantic search, voice) with a `gradio.live` link. Live only
-  while the tab is open. For demos / viva.
-
-- **Render "Lite"** (`render.yaml`, free tier, 24/7) — a new **`LITE_MODE`** that
-  strips every heavy dependency so the app fits in ~350 MB:
-  - `LITE_MODE=true` (in `app/config.py`) force-sets: keyword scheme search,
-    rule-based answers, stub translation, gTTS, no dev banner.
-  - **`app/rag/keyword_retriever.py`** — a pure-Python BM25 ranker over the same
-    scheme `.txt` files (no torch / transformers / faiss). Two tweaks for this
-    small structured corpus: a **name/header boost** (so "apply for PM-KISAN"
-    ranks the PM-KISAN file above files that merely say "kisan" often) and a
-    **≥2-matching-terms guard** (a single incidental rare-word match → "insufficient
-    information", never fabrication).
-  - **`requirements-lite.txt`** — 5 packages only (gradio, requests, numpy,
-    python-dotenv, gTTS). No torch.
-  - `app/utils/device.py` no longer imports torch unless it's installed;
-    `_get_llm`/`_get_tts` skip device probing for stub/gtts. Verified: with
-    torch/transformers/faiss *blocked*, the full typed pipeline still runs.
-  - `app/main.py` reads Render's `PORT` and skips the share tunnel on any host
-    (`SPACE_ID` / `RENDER` / `PORT` set).
-  - UI hides the microphone in lite mode with a "voice available in full version"
-    note; typed input drives everything.
-
-- **`DEPLOY.md`** — click-by-click for both paths.
-
-**New test:** `scripts/test_lite_mode.py` — forces `LITE_MODE`, checks the keyword
-retriever picks the right scheme (4/4), refuses off-topic (3/3), runs the full
-typed pipeline, and asserts **no heavy ML library is imported**. All pass.
-
-**Regression after lite work:** pytest 13/13, Phase 9 14/14, Phase 10 11/11,
-evaluate HEALTHY — all still green in normal (FAISS) mode.
-
-**Deployment fixes along the way:** Render first defaulted to Python 3.13 (no
-wheel for the pinned numpy → source build → `No module named 'pkg_resources'`) —
-fixed with `.python-version` = 3.11.9 and loose lite pins. Then a stale
-`gradio==4.44.0` pin paired with a too-new `huggingface_hub` (`HfFolder` import
-error) — fixed by pinning `gradio==6.26.0`, the version the code runs on. The
-unused `openai-whisper` (STT uses transformers) and `langchain` pins were dropped
-from `requirements.txt` at that point.
-
----
-
-### UI Redesign — dark-first editorial theme
-**Status:** Complete (commit `717d1f7`)
-
-Replaced the tabbed green theme with an editorial layout: near-black canvas (with
-a full light palette following the viewer's system setting), hairline rules
-instead of boxes, letterspaced section labels, a wheat-gold accent, a large hero
-headline, a two-panel console (ask on the left, answer on the right, stacking on
-narrow screens), tool-status chips, click-to-fill example questions, and a
-collapsible "Transcript & pipeline" diagnostics panel. Theme and CSS live in
-`app/ui/gradio_app.py` (`build_theme`, `_CSS`).
-
----
-
-### LangChain Agent — default agent engine
-**Status:** Complete · closes the brief's "LangChain agents with tool-calling"
-
-- **`app/agents/langchain_agent.py`** — the three farm tools are LangChain `Tool`s
-  (`crop_knowledge`, `weather_forecast`, `government_schemes`) and a ReAct
-  `AgentExecutor` (`create_react_agent`) runs the loop: at each step the model
-  picks the next tool or finishes; LangChain executes it and feeds back the
-  observation. The final answer is then written from what the agent gathered, so
-  the output format is identical to the sequential engine.
-- **`app/models/langchain_llm.py`** — adapter exposing any project LLM
-  (StubLLM / local Qwen / HF API) to LangChain.
-- **Who decides on CPU:** `StubLLM._react_step` — a deterministic policy that
-  speaks LangChain's exact ReAct text protocol, choosing tools from the same
-  rule-based router. The AgentExecutor, tool calls and parsing are real
-  LangChain. With a real LLM configured (Colab notebook: Qwen 1.5B; GPU: Llama /
-  Gemma) the model makes the decisions — no code change.
-- **Resilience:** if the loop errors, stalls, or can't parse the model's output,
-  the deterministic orchestrator takes over — never a broken reply.
-- **Config:** `AGENT_BACKEND=langchain` (default) | `sequential`. If LangChain
-  isn't installed the app falls back automatically.
-- **Render:** LangChain added to `requirements-lite.txt`. Measured with the heavy
-  ML libraries absent (as on Render): 143 MB → 166 MB of the 512 MB limit.
-  (LangChain's optional `transformers` import is skipped when it isn't installed.)
-
-**New test:** `scripts/test_langchain_agent.py` — exact tool set for all 9 intents,
-answers for each, fallback when the model ignores the ReAct format or loops
-forever, and that the UI uses LangChain by default. **34/34 pass.**
-
----
-
-### 4-Language Interface + Voice Questions in Every Language
-**Status:** Complete
-
-**The screen:** a picker in the top bar — `🇬🇧 English` · `🇮🇳 Hindi` ·
-`ਪੰਜਾਬੀ Punjabi` · `मराठी Marathi` — switches the whole interface: brand, headline,
-instructions, section labels, placeholders, the Ask button, the language
-readout, tool-status chips, the audio label, diagnostics, footer, and every
-error/help message. 47 strings × 4 languages live in **`app/ui/i18n.py`**. A
-switch re-renders 28 components; the page is tagged `lang="hi|pa|mr"` so the CSS
-relaxes the Latin-style letterspacing that would break Devanagari/Gurmukhi, and
-Noto Sans Devanagari/Gurmukhi were added to the theme fonts.
-
-**Voice questions:**
-- Whisper is now **forced to the chosen language** (`transcribe(language=…)`)
-  instead of guessing — auto-detect used to return "unknown" for Hindi.
-- Without the 4 GB translator, regional speech reaches the English agent via
-  **Whisper's own speech→English translation** (`transcribe(translate=True)`)
-  **plus the original transcript** (`AgentState.routing_text()`).
-- **Finding (tested):** whisper-small's translation works for Hindi but fails for
-  Marathi (it just sounds the words out) and Punjabi ("My wheat is 40 days old"
-  came out as "My wife is 40 days old"). The native transcripts still contain the
-  key words, so the router gained a **Hindi/Marathi/Punjabi farm vocabulary**
-  (`StubLLM._REG_*`): weather/scheme/fertiliser/pest/irrigation words, crop names
-  in all three scripts (incl. Punjabi written in Devanagari, which Whisper often
-  produces), 22 city names, and spoken crop ages (चालीस / चाळीस / ਚਾਲੀ दिन → 40 days).
-  A place named with nothing else matching is treated as a weather question.
-- Result: spoken questions in **all four languages** reach the right tool.
-
-**Scope (decided):** typed questions are English — typed Hindi/Punjabi/Marathi
-gets a polite message, in that language, asking for English (unless IndicTrans2
-is configured, in which case it's translated). Answers and the spoken reply are
-English without IndicTrans2; a note under "Response" says so in the chosen
-language.
-
-**New test:** `scripts/test_i18n.py` — string completeness (same placeholders in
-every language), exact picker labels, the re-render wiring, localised messages,
-all 12 spoken example phrases + 4 real garbled Whisper transcripts routed from
-native words, and a **voice section** that synthesises a question in each
-language (gTTS), runs Whisper, and checks the agent calls the right tool.
-**33/33 pass.** `scripts/test_lite_mode.py` now *blocks* the heavy libraries
-(as on Render) and also checks the Lite screen (mic hidden, picker present).
-
-**Browser-verified:** all four languages switch every listed element; asking a
-question in the Marathi screen returned live Pune weather with the readout and
-chips in Marathi; switching to Punjabi afterwards re-rendered them in Punjabi;
-no console errors.
-
----
-
-### Voice + Answers in Every Language on the Free Host (Groq) — for farmers who can't read
-
-**The problem (in simple words):** on Render, the mic was hidden and only English
-worked. Why? Render's free computer has only 512 MB of memory. The "ears"
-(Whisper) need about 1 GB and the translator about 4 GB — they simply don't fit.
-
-**The fix (in simple words):** we "rent" the ears and the translator for free
-from **Groq**, a cloud service. Our small app sends the farmer's voice to Groq,
-Groq writes down the words (Whisper-large-v3 — the biggest, most accurate
-Whisper), and an open-weight AI model (OpenAI's **gpt-oss-120b**, Apache-2.0)
-works out what the farmer means and later writes the answer **in the farmer's
-own language**, using only the facts our tools found. Nothing new to install;
-the app still uses under 200 MB. The only thing needed is a free key
-(`GROQ_API_KEY`, see DEPLOY.md section C). *Note: Groq's free plan no longer
-includes Llama 3.x (Enterprise only, Sept 2026), so gpt-oss is the default; the
-app tries `gpt-oss-120b → gpt-oss-20b → llama-3.3-70b` and skips any it can't use.*
-
-**The farmer's journey now:**
-
-| Step | What the farmer does | What the app does |
+| Step | What happens | Which file |
 |---|---|---|
-| 1 | Opens the link | Opens in their language (remembered on the phone) |
-| 2 | Taps 🎙️, speaks, taps stop | Sends the question by itself — no other button |
-| 3 | — | Groq Whisper writes the words; "You asked: …" is shown |
-| 4 | — | The LLM understands it: crop, age, village, weather/scheme/crop care |
-| 5a | If something is missing | Asks back **out loud, in their language**: "How many days old is your wheat?" / "Which village are you in?" |
-| 5b | Replies with just "40 days" / "Nashik" | Remembers the first question and completes it |
-| 6 | — | LangChain agent runs the tools (crop / weather / scheme) |
-| 7 | Listens | The LLM writes the answer in their language from the facts; gTTS speaks it |
+| 1 | The browser records audio. When the farmer taps stop, the question is sent automatically — no extra button. | `app/ui/gradio_app.py` |
+| 2 | The audio goes to Whisper. We *tell* Whisper the language is Hindi (guessing was unreliable). | `app/models/stt.py` |
+| 3 | The words go to the LLM on Groq, which returns a small structured summary (JSON): crop, age, place, what's wanted. | `app/agents/understanding.py` |
+| 4 | The app checks for missing details. If the age were missing it would ask, in Hindi, "How many days old is your wheat?" | `app/agents/clarify.py` |
+| 5 | The agent decides which tools to run, following the plan from step 3–4. | `app/agents/langchain_agent.py` |
+| 6 | The crop tool opens `data/crops/wheat.json`, finds the stage that covers day 40 and reads its advice. | `app/tools/crop_tool.py` |
+| 7 | The LLM writes a short Hindi answer using **only** those facts. | `app/agents/reply_writer.py` |
+| 8 | The text appears on screen first; the voice follows a moment later. | `app/models/tts.py` |
 
-**Every "incorrect or incomplete" case is told to the farmer, spoken, in their language:**
+Everything about this one question is carried from step to step in a single
+Python object called **`AgentState`** (`app/agents/state.py`) — think of it as a
+folder that travels down the line, and each worker adds a page to it (the words,
+the crop, the weather result, the answer…). It also carries
+**`response_language`** — the language the farmer picked — so every step knows
+which language the answer must be in.
 
-| Farmer says | App says (in their language) |
+---
+
+## 4. Each part explained in detail
+
+### 4.1 The screen — `app/ui/gradio_app.py` and `app/ui/i18n.py`
+
+**What the farmer sees:**
+- a **language picker** at the top (English · Hindi · ਪੰਜਾਬੀ · मराठी),
+- **01 Speak** — the microphone,
+- **02 Or type** — a text box,
+- **03 Location** — type a village, or tap **📍 Use my location** (GPS),
+- example questions — tap one and it's asked immediately,
+- the **answer**, with **tool chips** showing which tools were used (Crop / Weather / Scheme),
+- the **spoken reply** player (it plays by itself),
+- a folded **"Transcript & pipeline"** panel with technical details.
+
+**How the 4 languages work:** every piece of text on the screen is stored in
+`i18n.py` — 87 messages, each written in all 4 languages. When the farmer changes
+the language, the app swaps every message at once.
+
+**What's remembered:** the chosen language and the village are saved in the
+phone's browser (`localStorage`), so the next visit opens the same way.
+
+**The mode line:** under the big headline there's a small line like
+`lite · voice groq whisper-large-v3 · llm groq openai/gpt-oss-120b · agent langchain · rag bm25 · tts gtts · 4 languages`.
+It tells you exactly which parts are switched on. It is the fastest way to
+check if a deployment is configured correctly.
+
+### 4.2 The ears (speech-to-text) — `app/models/stt.py`
+
+The app has two kinds of "ears":
+
+| Class | Where it runs | When it's used |
+|---|---|---|
+| `GroqWhisperSTT` | Groq's servers, **Whisper-large-v3** (the biggest, most accurate Whisper) | When `GROQ_API_KEY` is set |
+| `WhisperSTT` | Your laptop, **Whisper-small** | When there's no key (laptop only) |
+
+Important details:
+- **The language is forced** to the one the farmer picked. Automatic detection
+  often got Hindi wrong, so we tell Whisper instead of letting it guess.
+- **Farm-word hints:** Groq Whisper gets a short hint of farm words in that
+  language, which improves spelling of crop names.
+- **Silence and noise detection:** if the recording is empty or noise, the
+  farmer hears "I could not hear you, please speak close to the phone".
+- **Loop protection:** local Whisper sometimes repeated a word forever
+  ("अगर अगर अगर…"). We limit its length, penalise repeats, and detect such output
+  (`_is_degenerate`) and ask the farmer to speak again.
+
+### 4.3 Understanding the question — `app/agents/understanding.py`
+
+The goal: turn the farmer's words (in any of the 4 languages) into one clear
+summary called an **`Understanding`**:
+
+```
+english          : "My wheat is 40 days old, which fertilizer should I apply?"
+topic            : farming          (or greeting / off_topic / unclear)
+crop             : wheat
+crop_age_days    : 40
+location         : —
+wants_crop_advice: yes   (advice_topic: fertilizer)
+wants_weather    : no
+wants_scheme     : no
+```
+
+There are **two engines**:
+1. **The LLM (Groq)** — reads any of the 4 languages directly, understands spelling
+   mistakes from speech recognition, and returns this summary as JSON. We set its
+   *temperature* to 0, which makes its output consistent rather than creative.
+2. **The rules** — used when there's no key, or when the LLM fails. It's a
+   keyword matcher (`StubLLM._classify` in `app/models/llm.py`) that knows farm
+   words in English, Hindi, Marathi and Punjabi, 22 city names, and spoken
+   numbers like "चालीस दिन" (forty days).
+
+Even when the LLM is used, the rules run too and fill in anything the LLM left
+empty.
+
+**Follow-up memory:** if the app just asked "How many days old is your wheat?"
+and the farmer replies only "40 days", the understanding step joins that reply
+to the earlier question (`merge_followup`).
+
+### 4.4 Checking what's missing — `app/agents/clarify.py`
+
+Before calling any tool, the app asks: *can I actually answer this?*
+
+| The farmer said… | The app replies (in their language) |
 |---|---|
-| Crop question, no crop named | "Which crop is this about? I know wheat, rice, cotton, onion, tomato, maize." |
+| A crop question with no crop | "Which crop is this about? I know wheat, rice, cotton, onion, tomato, maize." |
 | Fertilizer/water question, no age | "How many days old is your wheat crop? e.g. 40 days" |
-| Impossible age (wheat, 300 days) | "Wheat is usually ready in about 120 days, but you said 300. Please check." |
+| An impossible age (wheat, 300 days) | "Wheat is usually ready in about 120 days, but you said 300. Please check." |
 | A crop we don't cover (sugarcane) | "I don't have advice for sugarcane yet. I can help with…" |
-| Weather, no place | "Which village or town are you in? Or tap 📍 Use my location." |
-| A place the map can't find | "I could not find 'X'. Please say a nearby big town or your district." |
+| Weather, but no place | "Which village or town are you in? Or tap 📍." |
+| A place the map can't find | "I could not find 'X'. Please say a nearby big town." |
 | A scheme we don't have | "I can tell you about PM-KISAN, crop insurance, KCC, Soil Health Card." |
-| Not about farming / unclear / hello | What the assistant can help with, plus an example question |
-| Silence or noise | "I could not hear you. Speak close to the phone, then tap stop." |
-| Groq busy / down | "Please wait a minute and ask again" / "try again in a few minutes" |
+| Hello / off-topic / unclear | What the assistant can help with, plus an example |
 
-If part of a question can be answered (e.g. weather yes, but crop age missing),
-it answers that part **and** adds the question for the missing detail at the end.
+If *part* of the question can be answered (say, the weather), the app answers
+that part and adds the missing-detail question at the end. The missing detail is
+remembered, so the farmer can reply with just "40 days".
 
-**Other help for farmers who can't read:** 📍 button fills the location from GPS
-(the weather tool accepts coordinates); the village and language are remembered;
-examples are in their language (tap = ask); a "What I can help with" panel;
-every message is spoken; bigger mic and answer text; Indian towns are preferred
-when two places share a name ("Shirur, Pune" also works).
+The output of this step is a **plan**: which tools to run, with which crop, age,
+place and search words.
 
-**New files:**
-- `app/models/groq_client.py` — talks to Groq with plain `requests`: model
-  fallback, rate-limit handling, the key is never logged.
-- `app/models/stt.py` → `GroqWhisperSTT` — forced language, a farm-word hint per
-  language, and silence / noise / "echo" detection.
-- `app/agents/understanding.py` — what was asked + what's missing (LLM JSON,
-  with the keyword rules as a backup), and follow-up merging.
-- `app/agents/clarify.py` — decides what to answer and what to ask back.
-- `app/agents/reply_writer.py` — the answer in the farmer's language, facts only;
-  retries if the model writes the wrong script (e.g. Punjabi in Devanagari).
-- `scripts/test_voice_languages.py` — **66/66**: fakes the Render host + Groq and
-  walks every journey above in all 4 languages, plus failure paths.
-- `scripts/test_groq_live.py` — the same with the real key (run after adding it).
+### 4.5 The agent — `app/agents/langchain_agent.py`
 
-**Also fixed:** the Hindi/Punjabi/Marathi letter-spacing rule never applied
-(Gradio's own CSS prefix out-ranked it) — Indic text on buttons and headings is
-no longer stretched apart.
+The **agent** is the manager that calls the tools. It uses **LangChain** and the
+**ReAct** style: it writes a thought ("I need the crop advice"), picks a tool,
+LangChain runs the tool, the result comes back, and it decides the next step —
+until it has everything.
 
-**Browser-verified (local, Render settings):** mic shown; Hindi page; tapping a
-Hindi example answered from the crop tool (tillering stage); 📍 filled and
-remembered the location and the weather tool used it; reload restored Hindi and
-the place; phone-size layout checked; with a broken key the app fell back to the
-rules and told the farmer in Hindi — and the key never appeared in the logs.
+The three tools it can call:
 
----
-
-### Faster Replies
-
-Measured in the browser on the laptop build (no Groq key), same questions:
-
-| Step | Before | Now | How |
-|---|---|---|---|
-| Typed question → answer on screen | 11.9 s | **0.3–3.8 s** | The words are sent to the page as soon as they exist; the voice follows |
-| Making the voice (gTTS, 420 chars) | 11.5 s | **1.2 s** | Google's endpoint takes ~100 characters per request; the parts are now fetched at the same time and joined |
-| Voice question (Hindi, whisper-small) | 38–49 s | **~10 s** | Whisper was looping ("अगर अगर अगर…") to its 448-token limit: capped the length, penalised repeats, and the second English pass now runs only if the keyword rules understood nothing |
-| First question after a restart | +20–30 s | 0 | The speech model and scheme index load in a background thread at startup |
-| A garbled transcript | Answered the wrong question | "I could not hear you — please say it again" | Repetition detector (`_is_degenerate`) |
-
-Spoken replies also stop before the standing "Important / Source" lines. (A
-one-column redesign was tried alongside these changes and rolled back at the
-user's request; the screen is the two-column layout described above.)
-
----
-
-### Deployment status
-- **Render (Lite) — live:** https://farmer-advisory-voice-agent.onrender.com
-  (verified HTTP 200). Redeploy after a push with Render's **Manual Deploy →
-  Deploy latest commit** — the service isn't connected via Render's GitHub app,
-  so pushes don't deploy on their own.
-- **Colab notebook — ready:** `notebooks/run_full_app_colab.ipynb` runs the full
-  app (4-language mic, LangChain agent on Qwen 1.5B, semantic search, voice).
-  Dry-run verified locally; a real Colab run needs your Google account.
-- **Hugging Face Spaces — not deployed:** Gradio Spaces need a paid plan since
-  mid-2026; the Spaces config is kept in the repo.
-
----
-
-## Current Dev Mode Settings (`.env`)
-
-| Setting | Current Value | What it means |
+| Tool name | What it does | Input |
 |---|---|---|
-| `WHISPER_MODEL_ID` | `openai/whisper-small` | STT (matches brief; tiny for more speed) |
-| `LOCAL_LLM_MODEL_ID` | `Qwen/Qwen2.5-0.5B-Instruct` | Small real LLM for CPU (no GPU) |
-| `USE_STUB_TRANSLATION` | `true` | Skip 4GB IndicTrans2; voice speaks English |
-| `USE_STUB_LLM` | `true` | `false` → use the real local LLM (CPU) |
-| `USE_HF_INFERENCE_API` | `true` | With both stubs off + this false → local LLM |
-| `USE_STUB_RAG` | `false` | Use real FAISS scheme index |
-| `TTS_ENGINE` | `gtts` | Real Hi/Mr/Pa audio on CPU; `parler` for prod GPU |
-| `RAG_MIN_SCORE` | `0.30` | Below this → "insufficient information" (no fabrication) |
-| `RAG_BACKEND` | `faiss` | `bm25` = keyword search, no torch (LITE_MODE forces it) |
-| `LITE_MODE` | `false` | `true` = tiny footprint for the free Render deploy |
-| `AGENT_BACKEND` | `langchain` (default) | `sequential` = deterministic orchestrator |
-| `DEV_MODE` | `true` | Show pipeline trace panel in UI |
-| `GROQ_API_KEY` | *(your free key)* | Voice via Groq Whisper + answers in all 4 languages; empty = off |
-| `GROQ_LLM_MODELS` | `openai/gpt-oss-120b,…` | LLMs tried in order (skipped if unavailable/over limit) |
-| `STT_BACKEND` | `auto` | `auto` = Groq if a key is set, else local Whisper |
+| `crop_knowledge` | Stage-by-stage advice for a crop | crop name |
+| `weather_forecast` | Live weather + 3-day forecast + farm advisories | place name or GPS coordinates |
+| `government_schemes` | Searches the scheme documents (RAG) | the question |
 
-## Project Status — ALL 15 PHASES COMPLETE ✅ + LIVE
+**Who makes the decisions inside the agent?** In this project, a small
+rule-based policy (`StubLLM._react_step`) that follows the plan from the clarify
+step and speaks LangChain's exact ReAct text format. The LangChain machinery
+(executor, tool calls, parsing) is real. If you connect a real LLM (as in the
+Colab notebook), the LLM makes the decisions instead — no code change. We chose
+this because it is fast, free and never picks the wrong tool.
 
-All 15 phases are built, tested and evaluated, plus the LangChain agent (default
-engine), the 4-language interface, and a live free deployment on Render. With a
-free Groq key the live site takes **voice questions and answers in Hindi,
-Punjabi, Marathi and English**, and asks the farmer back whenever a question is
-incomplete or unclear. Without the key it falls back to typed English.
+**Safety net:** if the agent loop crashes, loops too long, or can't read its own
+output, a simpler **sequential orchestrator** (`app/agents/orchestrator.py`)
+runs the tools directly. The farmer never sees a broken reply.
 
-## GitHub Repository
+### 4.6 The crop expert — `app/tools/crop_tool.py` + `data/crops/*.json`
 
-https://github.com/sehscape/Farmer-Advisory-Voice-Agent
+Each crop has one JSON file. Inside, the crop's life is split into **stages** by
+day range. Each stage has: name, description, irrigation, fertilizer, pests to
+watch for, and tips.
+
+| Crop | Stages | Total days |
+|---|---|---|
+| Wheat | 8 | 120 |
+| Rice | 6 | 135 |
+| Onion | 5 | 130 |
+| Tomato | 6 | 120 |
+| Cotton | 6 | 180 |
+| Maize | 6 | 100 |
+
+How it works: take the crop and its age → find the stage whose day range
+contains that age → return that stage's advice. For wheat at 40 days that's
+**Tillering (days 26–50)**: second irrigation at 40–45 days, 25 kg urea per acre,
+watch for aphids and powdery mildew, remove weeds.
+
+Crop names are recognised in all languages (गेहूं / ਕਣਕ / गहू → wheat; paddy → rice).
+
+### 4.7 The weather checker — `app/tools/weather_tool.py`
+
+1. **Find the place:** the village name is turned into map coordinates using the
+   free **Open-Meteo Geocoding API**. Indian places are preferred when two share a
+   name. If the farmer tapped 📍, we already have coordinates.
+2. **Get the weather:** the **Open-Meteo Forecast API** gives current conditions
+   (temperature, humidity, rain, wind) and a 3-day forecast (rain chance and
+   amount, min/max temperature).
+3. **Turn codes into words:** weather codes like `61` become "Slight rain".
+4. **Add farming advice by rule:**
+
+| Condition | Advice |
+|---|---|
+| Temperature above 38 °C | Avoid spraying pesticides; irrigate |
+| Below 5 °C | Near-frost — protect sensitive crops |
+| Humidity above 85% | Fungal disease risk — check crops |
+| Rain above 20 mm | Delay fertilizer application |
+| Thunderstorm | Keep people and equipment away from fields |
+
+No API key is needed. Place lookups are cached, so asking again is faster.
+If the service is down, the farmer hears "the weather service isn't responding,
+please ask again later" — the rest of the answer still works.
+
+### 4.8 The scheme finder (RAG) — `app/rag/` + `app/tools/scheme_tool.py`
+
+**What problem RAG solves:** an LLM on its own might "remember" scheme rules
+wrongly or make them up. With RAG, we first **find** the right paragraph in the
+official documents, then the answer is written **from that paragraph only**.
+
+**The documents:** 4 text files in `data/schemes/raw/` — PM-KISAN, PM Fasal Bima
+Yojana (crop insurance), Kisan Credit Card, Soil Health Card.
+
+**Preparing the search (done once, `scripts/build_scheme_index.py`):**
+1. Read the 4 files.
+2. Cut them into overlapping **chunks** of 1000 characters (150 characters
+   overlap, so a sentence cut at the edge still appears whole in one chunk).
+   This gives **15 chunks**.
+3. Turn each chunk into an **embedding** with the
+   `paraphrase-multilingual-MiniLM-L12-v2` model.
+4. Store them in a **FAISS** index (`data/vectorstore/schemes.faiss`).
+
+**Answering a question:**
+1. Turn the question into an embedding too.
+2. FAISS finds the **5 closest chunks** (by *cosine similarity* — how close their
+   meanings are, from 0 to 1).
+3. **Guardrail:** chunks scoring below **0.30** are thrown away. If none are left,
+   the tool answers *"The documents do not contain sufficient information…"*
+   instead of guessing.
+4. The surviving chunks, with their source file names, go to the answer writer.
+
+**On the free server** there isn't enough memory for the embedding model, so a
+second search method is used: **BM25** keyword search (`keyword_retriever.py`),
+written in plain Python. Two extra rules make it reliable: a boost when a word
+matches the scheme's own name, and a rule that the best chunk must match **at
+least 2 different words** of the question — one accidental match is not enough.
+The setting `RAG_BACKEND` chooses the method (`faiss` or `bm25`).
+
+### 4.9 Writing the answer in the chosen language
+
+This is where the farmer's chosen language is enforced. The app tries three
+ways, in order:
+
+**Way 1 — the LLM writes it directly** (`app/agents/reply_writer.py`, needs Groq).
+The LLM gets: the farmer's question, the facts from the tools, and strict rules:
+- reply **only** in the chosen language and script, even if the question was in another language,
+- use **only** the facts — no dose, date, price or rule that isn't there,
+- answer the question in 1–2 sentences, then at most 4 short steps,
+- simple spoken sentences, no markdown or emojis, under 110 words.
+
+If the reply comes back in the wrong script (e.g. Punjabi written in Devanagari),
+the app asks once more; if it's still wrong, it moves to way 2.
+
+**Way 2 — translate the English answer** (`app/models/translation.py`, laptop).
+First, a rule-based English answer is built from the facts (`StubLLM._compose_answer`):
+*Situation → What you should do (numbered steps) → Important → Source*. Then the
+**NLLB-200** translation model (by Meta, 600 million parameters, ~2.5 GB, runs on
+the CPU) translates it. Three protections were added because the model made
+dangerous mistakes:
+
+| Mistake the model made | Protection |
+|---|---|
+| "Tillering" (a growth stage) → "harvest" in Hindi and Marathi | Growth stages and section headings come from a **hand-written glossary** (`app/models/agri_glossary.py`), never from the model |
+| "3–5 cm" of water → "35 cm" (it dropped the dash) | Number ranges are rewritten as "3 to 5" before translating |
+| "per hill" → "per mountain"; "live weather" → "living weather" | These phrases are reworded before translating |
+
+The answer is translated one sentence at a time (short inputs translate better),
+all in one batch, and results are cached.
+
+**Way 3 — English with a spoken notice.** If both fail (e.g. on Render, which has
+no translator), the farmer sees the English advice and hears, in their language,
+"I couldn't prepare the answer in Hindi right now, please ask again in a minute."
+
+### 4.10 The voice — `app/models/tts.py`
+
+**gTTS** (Google Text-to-Speech) makes an MP3 in Hindi, Marathi, Punjabi or
+English. It only accepts about 100 characters per request, so long answers are
+split into pieces that are fetched **at the same time** and joined — this cut the
+wait from 11.5 s to about 1.2 s. The standing "Important / Source" lines are not
+read aloud, to keep the audio short.
+
+A higher-quality Indian voice (`ai4bharat/indic-parler-tts`) is built in too, but
+it needs a GPU, so it is off by default.
+
+### 4.11 The Groq connection — `app/models/groq_client.py`
+
+One small file talks to Groq using plain web requests:
+- **Model fallback:** it tries `gpt-oss-120b` → `gpt-oss-20b` → `llama-3.3-70b`.
+  A model that's over its free limit is skipped for that request; a model the
+  account can't use is skipped for good.
+- **Clear errors:** each failure is labelled (wrong key, rate limit, too large,
+  network…) so the farmer hears the right message ("please wait a minute").
+- **The key is never written to the logs.**
+
+---
+
+## 5. The three ways the app runs
+
+| | Laptop + Groq key | Laptop, no key | Render free server + Groq key |
+|---|---|---|---|
+| Voice questions | ✅ Groq Whisper-large-v3 | ✅ Local Whisper-small (rough for Marathi/Punjabi) | ✅ Groq Whisper-large-v3 |
+| Understanding | Groq LLM | Rules | Groq LLM |
+| Answer language | ✅ LLM writes it | ✅ NLLB translates (6–8 s) | ✅ LLM writes it |
+| If Groq fails | NLLB translates instead | — | English + spoken notice |
+| Scheme search | FAISS (meaning) | FAISS (meaning) | BM25 (keywords) |
+| Memory | ~3–4 GB | ~3–4 GB | under 200 MB |
+
+**Why is Render different?** Render's free plan gives only **512 MB of memory**.
+Whisper, the embedding model and the translator together need several GB. So on
+Render we switch on **`LITE_MODE`**, which removes all of them and uses Groq
+(for listening and language) and BM25 (for search) instead. Without a Groq key,
+Render can only take typed English questions.
+
+---
+
+## 6. The settings file (.env)
+
+All settings are read by `app/config.py` from the `.env` file (laptop) or from
+Render's "Environment" page (live site). Your current laptop settings:
+
+| Setting | Your value | What it means |
+|---|---|---|
+| `GROQ_API_KEY` | *(your key, valid)* | Turns on Groq: voice via Whisper-large-v3, LLM understanding and answers |
+| `USE_STUB_TRANSLATION` | `false` | Use a real offline translator when Groq can't write the answer |
+| `TRANSLATION_ENGINE` | `nllb` | Which translator: `nllb` (free, CPU) or `indictrans2` (gated, GPU) |
+| `USE_STUB_LLM` | `true` | Build the English answer with rules (fast and grounded) instead of a slow local LLM |
+| `USE_STUB_RAG` | `false` | Use the real FAISS scheme search |
+| `WHISPER_MODEL_ID` | `openai/whisper-small` | Local ears, used only without a Groq key |
+| `TTS_ENGINE` | `gtts` | Voice engine |
+| `DEV_MODE` | `true` | Show the technical pipeline panel |
+| `LITE_MODE` | *(not set → false)* | `true` only on Render |
+
+Other settings (defaults are fine): `AGENT_BACKEND=langchain`,
+`RAG_BACKEND=faiss`, `RAG_MIN_SCORE=0.30`, `TOP_K=5`, `STT_BACKEND=auto`,
+`GROQ_LLM_MODELS=openai/gpt-oss-120b,openai/gpt-oss-20b,llama-3.3-70b-versatile`.
+
+On Render, `render.yaml` sets `LITE_MODE=true` and `PYTHON_VERSION=3.11.9`;
+`GROQ_API_KEY` must be added by hand on the service.
+
+---
+
+## 7. Every important file, and what it does
+
+```
+app/
+├── main.py                  starts the app, loads models in the background
+├── config.py                reads every setting from .env
+├── agents/
+│   ├── state.py             AgentState — the "folder" that travels with each question
+│   ├── understanding.py     what was asked + what's missing (LLM or rules)
+│   ├── clarify.py           decides what to answer and what to ask back
+│   ├── langchain_agent.py   the LangChain ReAct agent + its 3 tools
+│   ├── orchestrator.py      backup agent: runs the tools one after another
+│   ├── answering.py         builds the English answer from the tool results
+│   ├── reply_writer.py      the LLM writes the answer in the chosen language
+│   ├── prompts.py           prompt templates
+│   └── intent.py            older intent extractor (still used by tests)
+├── models/
+│   ├── stt.py               ears: Groq Whisper, local Whisper, silence checks
+│   ├── tts.py               voice: gTTS (default), Parler (GPU), stub
+│   ├── llm.py               StubLLM (rules, ReAct policy, English answer), local/HF LLMs
+│   ├── groq_client.py       talks to Groq: model fallback, errors, key safety
+│   ├── translation.py       NLLB and IndicTrans2 translators
+│   ├── agri_glossary.py     hand-written farm terms in Hindi/Marathi/Punjabi
+│   ├── embeddings.py        turns text into embeddings for FAISS
+│   ├── langchain_llm.py     lets LangChain use our LLMs
+│   └── indic_processor.py   text clean-up for IndicTrans2 (Windows-friendly)
+├── rag/
+│   ├── scheme_rag.py        FAISS search: chunk → embed → index → query
+│   └── keyword_retriever.py BM25 keyword search for the free server
+├── tools/
+│   ├── crop_tool.py         crop advice by growth stage
+│   ├── weather_tool.py      Open-Meteo weather + farm advisories
+│   └── scheme_tool.py       scheme search + "insufficient information" guardrail
+├── ui/
+│   ├── gradio_app.py        the screen and the whole question pipeline
+│   └── i18n.py              every message in 4 languages, crop names, examples
+└── utils/                   logging, audio conversion, CPU/GPU detection
+
+data/crops/                  6 crop JSON files
+data/schemes/raw/            4 scheme documents
+data/vectorstore/            the built FAISS index (15 chunks)
+scripts/                     tests, evaluation, index builder
+tests/test_stt.py            pytest unit tests
+notebooks/                   Colab notebook for the full app
+render.yaml                  Render settings
+requirements.txt             libraries for the full app
+requirements-lite.txt        libraries for Render (no PyTorch)
+DEPLOY.md                    step-by-step deployment guide
+```
+
+The questions pipeline itself lives in `_pipeline_iter()` inside
+`app/ui/gradio_app.py` — read it if you want to see all the steps in one place.
+
+---
+
+## 8. How to run it on your laptop
+
+```bash
+cd "D:\JIO 26-27\Live Project\multilingual-agri-agent"
+venv\Scripts\activate                  # switch on the project's Python libraries
+python scripts/build_scheme_index.py   # only once — prepares the scheme search
+python app.py                          # start the app
+```
+
+Open http://localhost:7860 (or the port shown). Startup takes 15–35 seconds while
+models load in the background. The microphone needs a real browser like Chrome.
+
+To check it's working, look at the mode line: with your Groq key it should say
+`voice groq whisper-large-v3 · llm groq openai/gpt-oss-120b · … · 4 languages`.
+
+---
+
+## 9. How we prove it works (tests)
+
+A **test** is a small program that runs the app with known questions and checks
+the answers automatically. Current results (22 Sept 2026, laptop with Groq key):
+
+| Test script | What it checks, in plain words | Result |
+|---|---|---|
+| `test_weather_phase6.py` | Weather for real places; bad places; no place | ✅ all pass |
+| `test_scheme_phase7.py` | Scheme search finds the right scheme and refuses off-topic questions | ✅ all pass |
+| `test_e2e_phase9.py` | Every type of question goes to the right tools; empty/odd inputs don't crash | ✅ 14/14 |
+| `test_tts_phase10.py` | Voice is produced in all 4 languages | ✅ 11/11 |
+| `test_langchain_agent.py` | The agent picks exactly the right tools for 9 question types; the backup takes over when needed | ✅ 34/34 |
+| `test_i18n.py` | The screen really switches all 4 languages; spoken questions reach the right tool | ✅ 33/33 |
+| `test_lite_mode.py` | The Render version runs with the heavy libraries missing | ✅ all pass |
+| `test_voice_languages.py` | Pretends to be Render + Groq and walks every farmer journey in 4 languages, including failures | ✅ 67/67 |
+| `test_language_consistency.py` | The chosen language always wins; glossary works; "3–5 cm" never becomes "35 cm" | ✅ 16/16 |
+| `test_groq_live.py` | The same journeys with your real Groq key | ✅ all pass |
+| `pytest -q` | Unit tests for speech-to-text | ✅ 13 passed |
+
+**Evaluation** (`scripts/evaluate.py`) measures quality on a small test set:
+intent 100%, tool choice 100%, scheme search top-1 100% (average relevance
+0.60), off-topic refusal 100%, answers grounded / actionable / cited 100%.
+Because the test set is small, this shows the pipeline is wired correctly — it is
+**not** a measure of real-world accuracy.
+
+---
+
+## 10. Putting it online (deployment)
+
+**Render (the live site).** The code is on GitHub; Render copies it, installs
+`requirements-lite.txt`, and runs `python app.py` with `LITE_MODE=true`.
+- Pushing to GitHub does **not** update the site by itself. After a push, open
+  the service on Render → **Manual Deploy → Deploy latest commit**.
+- The free server **sleeps** after ~15 minutes idle; the next visit wakes it in
+  about a minute.
+- **Adding the Groq key:** open the **web service** (not the project) →
+  **Environment** → add `GROQ_API_KEY` → **Save, rebuild, and deploy**.
+  Lesson learned: a key saved in an **Environment Group** does nothing until that
+  group is **linked** to the service.
+
+**Google Colab** (`notebooks/run_full_app_colab.ipynb`) runs the full app for a
+demo, with a temporary public link. It stops when you close the tab.
+
+**Hugging Face Spaces** needs a paid plan for Gradio apps since mid-2026, so it
+isn't used (the settings header is kept at the top of the README).
+
+Full steps: `DEPLOY.md`.
+
+---
+
+## 11. How we stop the AI from making things up
+
+| Protection | Where | What it does |
+|---|---|---|
+| Facts come from tools, not the AI | whole design | Crop file, weather API and scheme documents are the only sources |
+| Strict answer prompt | `reply_writer.py` | "Use only the facts; never add a dose, amount, price, date or rule" |
+| RAG relevance threshold | `scheme_tool.py` | Weak matches (below 0.30) are dropped → "insufficient information" |
+| BM25 two-word rule | `scheme_tool.py` | One accidental keyword match is not trusted |
+| Ask-backs | `clarify.py` | Missing crop, age or place → ask, never guess |
+| Impossible-age check | `clarify.py` | "Wheat, 300 days" → "please check the age" |
+| Farm glossary | `agri_glossary.py` | Growth stages are never machine-translated |
+| Range rewriting | `translation.py` | "3–5 cm" can't become "35 cm" |
+| Wrong-script check | `reply_writer.py` | A Punjabi answer in the wrong alphabet is never shown |
+| KVK reminder | answer template | "Confirm dosage with your local Krishi Vigyan Kendra" |
+
+**Honest note:** the LLM still sometimes adds a small step that isn't in the
+facts (e.g. "dissolve urea in water"). A next step is an automatic check that
+every number in the answer appears in the facts.
+
+---
+
+## 12. Problems we hit, and how we solved them
+
+These make good interview stories.
+
+| Problem | Why it happened | Fix |
+|---|---|---|
+| IndicTrans2 tools wouldn't install on Windows | Needed Microsoft C++ build tools | Wrote a pure-Python replacement (`indic_processor.py`) |
+| Test scripts crashed printing Hindi | Windows console used an old encoding | `enable_utf8_console()` in `app/utils/logging.py` |
+| Whisper got the language wrong | Auto-detection is unreliable on short Indic clips | Force the language the farmer picked |
+| Local Whisper repeated "अगर अगर अगर…" for ~40 s | A known repetition loop on CPU | Length cap + repeat penalty + repeat detector → ~10 s |
+| Render's free server couldn't fit the models | Only 512 MB of memory | `LITE_MODE` + BM25 + Groq for listening and language |
+| Render build failed | Render picked Python 3.13; then a Gradio/Hub version clash | Pinned Python 3.11.9 and `gradio==6.26.0` |
+| Voice took 11.5 s to generate | gTTS sends ~100 characters per request, one by one | Fetch the pieces in parallel → 1.2 s |
+| Hindi letters on buttons looked stretched | Letter-spacing meant for English text | Relaxed the spacing for Indic pages |
+| Answers came in English without a key | No translator was switched on | Added NLLB, since IndicTrans2 is gated and Google's free endpoint blocks automated use |
+| NLLB said "harvest" for "tillering", "35 cm" for "3–5 cm" | A general model doesn't know farm terms or keep dashes | Hand-written glossary + range rewriting + tests |
+| A test failed after adding the Groq key | The test assumed local Whisper was always used | Test now checks the engine that's actually configured |
+| Live site ignored the key | Key was saved in an Environment Group that wasn't linked | Add the key on the service itself (or link the group) |
+
+---
+
+## 13. Current status — what works, what doesn't
+
+*(checked 21–22 September 2026)*
+
+### ✅ Working
+- **Laptop, with your Groq key:** voice questions, understanding by the LLM,
+  answers in the chosen language (Hindi answer written in 0.8 s; Marathi ~5 s end
+  to end), ask-backs, all three tools, spoken replies. All tests pass.
+- **Laptop, without a key:** everything works; answers are translated by NLLB.
+- **Live site (Render):** the page, language switching, crop advice, weather
+  (Nashik, clear sky, 28.6 °C on 21 Sept), scheme keyword search, spoken replies,
+  ask-backs, and the recorder is shown.
+
+### ❌ Not working
+- **The live site answers in English.** Render has a Groq key, but every Groq call
+  fails — almost certainly the **old, invalid key**. Your laptop key works.
+  **Fix:** Render → the web service → Environment → paste the key from your
+  local `.env` into `GROQ_API_KEY` → Save, rebuild, and deploy.
+- For the same reason, **voice questions on the live site** will fail until the
+  key is fixed.
+
+### 🚧 Started, not finished
+- **Android app** (`mobile/`, React Native + Expo): the project is created, but
+  the app is still Expo's starter screen, and the backend it needs
+  (`app/api/mobile.py`) doesn't exist. `mobile/README.md` describes the planned
+  app, not a working one.
+
+---
+
+## 14. Limitations and future work
+
+**Limitations**
+- Groq's free plan allows roughly 50–60 full answers a day on the best model;
+  everyone on the live link shares one key.
+- Questions go to Groq's servers (a privacy trade-off; production should self-host).
+- The LLM sometimes adds small steps not in the facts.
+- The offline translator is literal with pest names and takes 6–8 s.
+- Render has no offline translator or semantic search (not enough memory).
+- Small knowledge base: 6 crops, 4 schemes.
+- gTTS needs internet and has one voice per language.
+
+**Future work**
+1. Fix the live Groq key.
+2. Automatically check every number in the answer against the facts.
+3. Add pest and disease names to the glossary.
+4. More crops and schemes; real government PDFs with page citations.
+5. Finish the Android app.
+6. Self-host Whisper + an LLM on a GPU; a more natural Indian voice.
+
+---
+
+## 15. How the project was built (timeline)
+
+Dates are from the git history (local work started in late August 2026; the
+first commit is 6 September).
+
+| When | What was built |
+|---|---|
+| 6 Sep 2026 | **Phases 1–3:** project setup; Whisper speech-to-text; IndicTrans2 translation |
+| 7 Sep 2026 | **Phases 4–8:** intent extraction and answers; crop tool (6 crops); weather tool (Open-Meteo); scheme RAG (FAISS, 15 chunks); sequential tool orchestrator; first UI redesign |
+| 7–9 Sep 2026 | Hardening pass (UTF-8 fix, better rule-based answers, RAG "insufficient information" guardrail) |
+| 9 Sep 2026 | **Phases 9–15:** end-to-end test (14/14); voice output (gTTS, Parler); full screen wiring with auto-play; evaluation harness; GPU auto-detect and caching; deployment prep; documentation; small real LLM on CPU (Qwen 0.5B) |
+| 10 Sep 2026 | **LITE_MODE** + BM25 for Render; Colab notebook; Render build fixes; live on Render; editorial UI theme |
+| 11 Sep 2026 | **LangChain ReAct agent** as the default engine (34/34); **4-language screen** + voice questions in every language (33/33) |
+| 12 Sep 2026 | **Groq**: Whisper-large-v3 + open LLM; understanding, ask-backs, answers in the farmer's language on Render (67/67) |
+| 12–14 Sep 2026 | Faster replies (text first, parallel voice, Whisper loop fix); two-column screen kept |
+| 16 Sep 2026 | **Chosen-language answers without Groq**: NLLB translator, farm glossary, range fix, `response_language` (16/16) |
+| 17–22 Sep 2026 | Groq key added locally; Render key troubleshooting; test updated for Groq; docs rewritten |
