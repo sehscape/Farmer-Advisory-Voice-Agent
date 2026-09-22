@@ -50,3 +50,6 @@ gradio_err.txt
 
 # Gradio cache
 .gradio/
+
+# Personal interview prep (kept local, not in the repo)
+Interview Q&A*.docx

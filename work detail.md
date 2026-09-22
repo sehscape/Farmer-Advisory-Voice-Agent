@@ -633,12 +633,6 @@ These make good interview stories.
 - For the same reason, **voice questions on the live site** will fail until the
   key is fixed.
 
-### 🚧 Started, not finished
-- **Android app** (`mobile/`, React Native + Expo): the project is created, but
-  the app is still Expo's starter screen, and the backend it needs
-  (`app/api/mobile.py`) doesn't exist. `mobile/README.md` describes the planned
-  app, not a working one.
-
 ---
 
 ## 14. Limitations and future work
@@ -658,7 +652,7 @@ These make good interview stories.
 2. Automatically check every number in the answer against the facts.
 3. Add pest and disease names to the glossary.
 4. More crops and schemes; real government PDFs with page citations.
-5. Finish the Android app.
+5. An Android app on the same backend.
 6. Self-host Whisper + an LLM on a GPU; a more natural Indian voice.
 
 ---
